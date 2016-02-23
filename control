@@ -9,25 +9,39 @@
 #
 # We really don't expect much of it. /s
 
-# Usage: ./control [COMMAND] [OPTIONS]
-#
-# COMMANDS:
-#   build           Build the image specified by the Dockerfile
-#
-# OPTIONS:
-#   -f, --force     Force the creation of the tag
-#       --no-cache  Disallow the use of the cache (included in -f)
-
-import json
+import argparse
 import docker
+import json
+import sys
+
+def print_formatted(line):
+    if len(line) == 1:
+        print(list(line.values())[0].strip())
+        return
+    if not 'progressDetail' in line.keys() or not line['progressDetail']:
+        print('{}: {}'.format(line['id'], line['status']))
+        return
+    print('Unknown value: {}'.format(line))
+
+parser = argparse.ArgumentParser(description='Control the building and running of images and containers')
+parser.add_argument('-f', '--force', action='store_true', help='be forceful in all things')
+parser.add_argument('-d', '--debug', action='store_true', help='print debug information helpful to developing the control script. This probably won\'t be useful to using the script, consider -v')
+parser.add_argument('image', nargs='?', default='iojs-base:4', help='the name of the image to be built')
+parser.add_argument('--no-cache', action='store_true', help='do not use the cache')
+parser.add_argument('--no-rm', action='store_false', help='do not remove any images, even on success')
+parser.add_argument('--no-pull', action='store_false', help='do not pull newer versions of the base image')
+args = parser.parse_args()
+
+if args.debug:
+    print(args)
+
 docker = docker.Client(base_url='unix://var/run/docker.sock')
 
 for line in (json.loads(l.decode('utf-8').strip()) for l in docker.build(path='.',
-        tag='iojs-base:4',
-        nocache=False,
-        rm=True,
-        pull=True,
+        tag=args.image,
+        nocache=args.no_cache,
+        rm=args.no_rm,
+        pull=args.no_pull,
         dockerfile='Dockerfile.prod')):
-    if 'stream' in line.keys():
-        print(line['stream'].strip())
+    print_formatted(line)
 
