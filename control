@@ -12,6 +12,7 @@
 import argparse
 import docker
 import json
+import os
 import sys
 
 def print_formatted(line):
@@ -35,12 +36,14 @@ args = parser.parse_args()
 if args.debug:
     print(args)
 
-# TODO: docker is full of idiots. Find a way to actually catch this
-try:
+# docker.Client doesn't raise an exception. They just crash the program. This
+# is the most graceful way I can save this.
+if os.path.exists('/var/run/docker.sock'):
     docker = docker.Client(base_url='unix://var/run/docker.sock')
-except:
-    print("Docker daemon not started", file=sys.stderr)
-    exit(1)
+else:
+    print('docker daemon not started', file=sys.stderr)
+    exit(2)
+
 
 for line in (json.loads(l.decode('utf-8').strip()) for l in docker.build(path='.',
         tag=args.image,
