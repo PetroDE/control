@@ -15,6 +15,9 @@ import json
 import os
 import sys
 
+def err(arg):
+    print('{PROG}: {}'.format(PROG), file=sys.stderr)
+
 def print_formatted(line):
     if len(line) == 1:
         print(list(line.values())[0].strip())
@@ -41,7 +44,7 @@ if args.debug:
 if os.path.exists('/var/run/docker.sock'):
     docker = docker.Client(base_url='unix://var/run/docker.sock')
 else:
-    print('docker daemon not started', file=sys.stderr)
+    err('docker daemon not started')
     exit(2)
 
 
