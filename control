@@ -35,13 +35,18 @@ args = parser.parse_args()
 if args.debug:
     print(args)
 
-docker = docker.Client(base_url='unix://var/run/docker.sock')
+# TODO: docker is full of idiots. Find a way to actually catch this
+try:
+    docker = docker.Client(base_url='unix://var/run/docker.sock')
+except:
+    print("Docker daemon not started", file=sys.stderr)
+    exit(1)
 
 for line in (json.loads(l.decode('utf-8').strip()) for l in docker.build(path='.',
         tag=args.image,
         nocache=args.no_cache,
         rm=args.no_rm,
         pull=args.no_pull,
-        dockerfile='Dockerfile.prod')):
+        dockerfile='Dockerfile')):
     print_formatted(line)
 
