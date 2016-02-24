@@ -28,14 +28,16 @@ def err(arg):
     print('{PROG}: {ARG}'.format(PROG=sys.argv[0], ARG=arg), file=sys.stderr)
 
 def print_formatted(line):
+    if options.debug:
+        print('bytes: {}'.format(line))
     if len(line) == 1:
         print(list(line.values())[0].strip())
         return
-    if not 'progressDetail' in line.keys() or not line['progressDetail']:
+    if 'error' in line.keys():
+        print('\x1b[31m{}\x1b[0m'.format(line['error']))
+    if 'id' in line.keys() and (not 'progressDetail' in line.keys() or not line['progressDetail']):
         print('{}: {}'.format(line['id'], line['status']))
         return
-    if options.debug:
-        print('Unknown value: {}'.format(line))
 
 # TODO: DRY it up
 def build(args):
@@ -52,6 +54,9 @@ def build(args):
                 pull=args.no_pull,
                 dockerfile=args.dockerfile)):
             print_formatted(line)
+            if 'error' in line.keys():
+                return False
+    return True
 
 def build_prod(args):
     if args.debug or args.dry_run:
@@ -67,10 +72,13 @@ def build_prod(args):
                 pull=args.no_pull,
                 dockerfile=args.dockerfile)):
             print_formatted(line)
+            if 'error' in line.keys():
+                return False
     print('writing IMAGES.txt')
     if not args.dry_run:
         with open('IMAGES.txt', 'w') as f:
             f.write('{}\n'.format(args.image))
+    return True
 
 # Handle global defaults here
 options = argparse.Namespace()
@@ -80,7 +88,7 @@ opts['dockerfile'] = 'Dockerfile'
 opts['no_cache'] = False
 opts['no_rm'] = True
 opts['no_pull'] = True
-opts['version'] = "1.1"
+opts['version'] = '1.2'
 
 # Read in a Controlfile if one exists
 if os.path.isfile('Controlfile'):
@@ -133,4 +141,6 @@ else:
     err('docker daemon not started')
     exit(2)
 
-options.func(options)
+ret = options.func(options)
+if not ret:
+    exit(1)
