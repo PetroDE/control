@@ -61,10 +61,6 @@ opts['no_cache'] = False
 opts['no_rm'] = True
 opts['no_pull'] = True
 
-# Parse just enough to know if we need debugging output
-parser = argparse.ArgumentParser(description='Control the building and running of images and containers')
-parser.add_argument('-d', '--debug', action='store_true', help='print debug information helpful to developing the control script. This probably won\'t be useful to using the script, consider -v')
-parser.parse_known_args(namespace=options)
 
 # Read in a Controlfile if one exists
 if os.path.isfile('Controlfile'):
@@ -74,11 +70,14 @@ if os.path.isfile('Controlfile'):
         except json.decoder.JSONDecodeError as e:
             err('Malformed Controlfile. Not valid JSON: {}'.format(str(e)))
             exit(1)
-elif options.debug:
+else:
+    # TODO: When, eventually, you have to do parsing to override defaults and you move to configparser, change this to print conditionally
     print('No Controlfile. Proceeding with defaults')
 
 # If you set a value that has a default, set it up above, then you must
 # reference that default here, otherwise it will be clobbered
+parser = argparse.ArgumentParser(description='Control the building and running of images and containers')
+parser.add_argument('-d', '--debug', action='store_true', help='print debug information helpful to developing the control script. This probably won\'t be useful to using the script, consider -v')
 parser.add_argument('-f', '--force', action='store_true', help='be forceful in all things')
 parser.set_defaults(func=build)
 subparsers = parser.add_subparsers()
