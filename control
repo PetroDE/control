@@ -82,13 +82,17 @@ parser.add_argument('-f', '--force', action='store_true', help='be forceful in a
 parser.set_defaults(func=build)
 subparsers = parser.add_subparsers()
 # TODO: add child parsers that handle the individual actions
-build_parser = subparsers.add_parser('build')
+build_parser = subparsers.add_parser('build', description='Build an image')
 build_parser.add_argument('-i', '--image', default=options.image, help='override the tagged name of the image being built')
 build_parser.add_argument('--dockerfile', default=options.dockerfile, help='override the dockerfile used to build the image')
 build_parser.add_argument('--no-cache', action='store_true', help='do not use the cache')
 build_parser.add_argument('--no-rm', action='store_false', help='do not remove any images, even on success')
 build_parser.add_argument('--no-pull', action='store_false', help='do not pull newer versions of the base image')
 build_parser.set_defaults(func=build)
+buildprod_parser = subparsers.add_parser('build-prod', description='Build a production image. This is the option used by Jenkins. No other options will be specified, so pick good defaults')
+buildprod_parser.add_argument('-i', '--image', default=options.image, help='override the tagged name of the image being built')
+buildprod_parser.add_argument('--dockerfile', default=options.dockerfile, help='override the dockerfile used to build the image')
+opts['no_cache'] = True
 parser.parse_args(namespace=options)
 
 if options.debug:
