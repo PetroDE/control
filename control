@@ -18,6 +18,7 @@
 # TODO: handle ^C without printing a stack trace, like normal people MOM!
 
 import argparse
+#import configparser
 import docker
 import json
 import os
@@ -53,36 +54,42 @@ def build(args):
 
 # Handle global defaults here
 options = argparse.Namespace()
-vars(options)['dockerfile'] = 'Dockerfile'
-vars(options)['no_cache'] = False
-vars(options)['no_rm'] = True
-vars(options)['no_pull'] = True
+opts = vars(options)
+opts['image'] = None
+opts['dockerfile'] = 'Dockerfile'
+opts['no_cache'] = False
+opts['no_rm'] = True
+opts['no_pull'] = True
 
-# TODO: Handle not having a Controlfile
-with open('Controlfile', 'r') as f:
-    try:
-        vars(options).update(json.load(f))
-    except json.decoder.JSONDecodeError as e:
-        err('Malformed Controlfile. Not valid JSON: {}'.format(str(e)))
-        exit(1)
-#except FileNotFoundError as e:
-#    print('No Controlfile found. Using defaults')
-
-# Do not set defaults for subparsers here if they will be used in the default run routine
+# Parse just enough to know if we need debugging output
 parser = argparse.ArgumentParser(description='Control the building and running of images and containers')
-parser.add_argument('-f', '--force', action='store_true', help='be forceful in all things')
 parser.add_argument('-d', '--debug', action='store_true', help='print debug information helpful to developing the control script. This probably won\'t be useful to using the script, consider -v')
+parser.parse_known_args(namespace=options)
+
+# Read in a Controlfile if one exists
+if os.path.isfile('Controlfile'):
+    with open('Controlfile', 'r') as f:
+        try:
+            vars(options).update(json.load(f))
+        except json.decoder.JSONDecodeError as e:
+            err('Malformed Controlfile. Not valid JSON: {}'.format(str(e)))
+            exit(1)
+elif options.debug:
+    print('No Controlfile. Proceeding with defaults')
+
+# If you set a value that has a default, set it up above, then you must
+# reference that default here, otherwise it will be clobbered
+parser.add_argument('-f', '--force', action='store_true', help='be forceful in all things')
 parser.set_defaults(func=build)
 subparsers = parser.add_subparsers()
 # TODO: add child parsers that handle the individual actions
 build_parser = subparsers.add_parser('build')
 build_parser.add_argument('-i', '--image', default=options.image, help='override the tagged name of the image being built')
-build_parser.add_argument('-f', '--dockerfile', default=options.dockerfile, help='override the dockerfile used to build the image')
+build_parser.add_argument('--dockerfile', default=options.dockerfile, help='override the dockerfile used to build the image')
 build_parser.add_argument('--no-cache', action='store_true', help='do not use the cache')
 build_parser.add_argument('--no-rm', action='store_false', help='do not remove any images, even on success')
 build_parser.add_argument('--no-pull', action='store_false', help='do not pull newer versions of the base image')
 build_parser.set_defaults(func=build)
-
 parser.parse_args(namespace=options)
 
 if options.debug:
