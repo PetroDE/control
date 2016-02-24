@@ -37,20 +37,40 @@ def print_formatted(line):
     if options.debug:
         print('Unknown value: {}'.format(line))
 
+# TODO: DRY it up
 def build(args):
-    if args.debug:
+    if args.debug or args.dry_run:
         print('running docker build')
     if not hasattr(args, 'image') or not args.image:
         err('No image name was specified. Edit your Controlfile or specify with -i')
         exit(1)
-    for line in (json.loads(l.decode('utf-8').strip()) for l in docker.build(path='.',
-            tag=args.image,
-            nocache=args.no_cache,
-            rm=args.no_rm,
-            pull=args.no_pull,
-            dockerfile=args.dockerfile)):
-        print_formatted(line)
+    if not args.dry_run:
+        for line in (json.loads(l.decode('utf-8').strip()) for l in docker.build(path='.',
+                tag=args.image,
+                nocache=args.no_cache,
+                rm=args.no_rm,
+                pull=args.no_pull,
+                dockerfile=args.dockerfile)):
+            print_formatted(line)
 
+def build_prod(args):
+    if args.debug or args.dry_run:
+        print('running docker build')
+    if not hasattr(args, 'image') or not args.image:
+        err('No image name was specified. Edit your Controlfile or specify with -i')
+        exit(1)
+    if not args.dry_run:
+        for line in (json.loads(l.decode('utf-8').strip()) for l in docker.build(path='.',
+                tag=args.image,
+                nocache=args.no_cache,
+                rm=args.no_rm,
+                pull=args.no_pull,
+                dockerfile=args.dockerfile)):
+            print_formatted(line)
+    print('writing IMAGES.txt')
+    if not args.dry_run:
+        with open('IMAGES.txt', 'w') as f:
+            f.write('{}\n'.format(args.image))
 
 # Handle global defaults here
 options = argparse.Namespace()
@@ -60,7 +80,7 @@ opts['dockerfile'] = 'Dockerfile'
 opts['no_cache'] = False
 opts['no_rm'] = True
 opts['no_pull'] = True
-
+opts['version'] = "1.1"
 
 # Read in a Controlfile if one exists
 if os.path.isfile('Controlfile'):
@@ -79,6 +99,8 @@ else:
 parser = argparse.ArgumentParser(description='Control the building and running of images and containers')
 parser.add_argument('-d', '--debug', action='store_true', help='print debug information helpful to developing the control script. This probably won\'t be useful to using the script, consider -v')
 parser.add_argument('-f', '--force', action='store_true', help='be forceful in all things')
+parser.add_argument('-n', '--dry-run', action='store_true', help='Pretend to execute actions, but only log that they happened')
+parser.add_argument('-V', '--version', action='version', version='%(prog)s v{}'.format(options.version))
 parser.set_defaults(func=build)
 subparsers = parser.add_subparsers()
 # TODO: add child parsers that handle the individual actions
@@ -89,10 +111,15 @@ build_parser.add_argument('--no-cache', action='store_true', help='do not use th
 build_parser.add_argument('--no-rm', action='store_false', help='do not remove any images, even on success')
 build_parser.add_argument('--no-pull', action='store_false', help='do not pull newer versions of the base image')
 build_parser.set_defaults(func=build)
-buildprod_parser = subparsers.add_parser('build-prod', description='Build a production image. This is the option used by Jenkins. No other options will be specified, so pick good defaults')
+buildprod_parser = subparsers.add_parser('build-prod', description='''Build a production
+        image. This is the option used by Jenkins. No other options will be
+        specified, so pick good defaults. Writes a file IMAGES.txt which is a
+        newline delimited file of the images that should be pushed to the
+        registry.''')
 buildprod_parser.add_argument('-i', '--image', default=options.image, help='override the tagged name of the image being built')
 buildprod_parser.add_argument('--dockerfile', default=options.dockerfile, help='override the dockerfile used to build the image')
 opts['no_cache'] = True
+buildprod_parser.set_defaults(func=build_prod)
 parser.parse_args(namespace=options)
 
 if options.debug:
