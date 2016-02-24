@@ -9,6 +9,14 @@
 #
 # We really don't expect much of it. /s
 
+# Things that are needed:
+#   - Clearly defined global options when ./control is run
+#   - Clearly defined options when ./control build is run
+#   - Override global defaults with Controlfile
+#   - Override Controlfile settings with CLI arguments
+#
+# TODO: handle ^C without printing a stack trace, like normal people MOM!
+
 import argparse
 import docker
 import json
@@ -16,7 +24,7 @@ import os
 import sys
 
 def err(arg):
-    print('{PROG}: {}'.format(PROG), file=sys.stderr)
+    print('{PROG}: {ARG}'.format(PROG=sys.argv[0], ARG=arg), file=sys.stderr)
 
 def print_formatted(line):
     if len(line) == 1:
@@ -25,19 +33,60 @@ def print_formatted(line):
     if not 'progressDetail' in line.keys() or not line['progressDetail']:
         print('{}: {}'.format(line['id'], line['status']))
         return
-    print('Unknown value: {}'.format(line))
+    if options.debug:
+        print('Unknown value: {}'.format(line))
 
+def build(args):
+    if args.debug:
+        print('running docker build')
+    if not hasattr(args, 'image') or not args.image:
+        err('No image name was specified. Edit your Controlfile or specify with -i')
+        exit(1)
+    for line in (json.loads(l.decode('utf-8').strip()) for l in docker.build(path='.',
+            tag=args.image,
+            nocache=args.no_cache,
+            rm=args.no_rm,
+            pull=args.no_pull,
+            dockerfile=args.dockerfile)):
+        print_formatted(line)
+
+
+# Handle global defaults here
+options = argparse.Namespace()
+vars(options)['dockerfile'] = 'Dockerfile'
+vars(options)['no_cache'] = False
+vars(options)['no_rm'] = True
+vars(options)['no_pull'] = True
+
+# TODO: Handle not having a Controlfile
+with open('Controlfile', 'r') as f:
+    try:
+        vars(options).update(json.load(f))
+    except json.decoder.JSONDecodeError as e:
+        err('Malformed Controlfile. Not valid JSON: {}'.format(str(e)))
+        exit(1)
+#except FileNotFoundError as e:
+#    print('No Controlfile found. Using defaults')
+
+# Do not set defaults for subparsers here if they will be used in the default run routine
 parser = argparse.ArgumentParser(description='Control the building and running of images and containers')
 parser.add_argument('-f', '--force', action='store_true', help='be forceful in all things')
 parser.add_argument('-d', '--debug', action='store_true', help='print debug information helpful to developing the control script. This probably won\'t be useful to using the script, consider -v')
-parser.add_argument('image', nargs='?', default='iojs-base:4', help='the name of the image to be built')
-parser.add_argument('--no-cache', action='store_true', help='do not use the cache')
-parser.add_argument('--no-rm', action='store_false', help='do not remove any images, even on success')
-parser.add_argument('--no-pull', action='store_false', help='do not pull newer versions of the base image')
-args = parser.parse_args()
+parser.set_defaults(func=build)
+subparsers = parser.add_subparsers()
+# TODO: add child parsers that handle the individual actions
+build_parser = subparsers.add_parser('build')
+build_parser.add_argument('-i', '--image', default=options.image, help='override the tagged name of the image being built')
+build_parser.add_argument('-f', '--dockerfile', default=options.dockerfile, help='override the dockerfile used to build the image')
+build_parser.add_argument('--no-cache', action='store_true', help='do not use the cache')
+build_parser.add_argument('--no-rm', action='store_false', help='do not remove any images, even on success')
+build_parser.add_argument('--no-pull', action='store_false', help='do not pull newer versions of the base image')
+build_parser.set_defaults(func=build)
 
-if args.debug:
-    print(args)
+parser.parse_args(namespace=options)
+
+if options.debug:
+    print('options={}'.format(vars(options)))
 
 # docker.Client doesn't raise an exception. They just crash the program. This
 # is the most graceful way I can save this.
@@ -47,12 +96,4 @@ else:
     err('docker daemon not started')
     exit(2)
 
-
-for line in (json.loads(l.decode('utf-8').strip()) for l in docker.build(path='.',
-        tag=args.image,
-        nocache=args.no_cache,
-        rm=args.no_rm,
-        pull=args.no_pull,
-        dockerfile='Dockerfile')):
-    print_formatted(line)
-
+options.func(options)
