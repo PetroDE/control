@@ -126,7 +126,7 @@ buildprod_parser = subparsers.add_parser('build-prod', description='''Build a pr
         registry.''')
 buildprod_parser.add_argument('-i', '--image', default=options.image, help='override the tagged name of the image being built')
 buildprod_parser.add_argument('--dockerfile', default=options.dockerfile, help='override the dockerfile used to build the image')
-opts['no_cache'] = True
+buildprod_parser.add_argument('--no-cache', default=True, action='store_true', help='allow the build to use the cache')
 buildprod_parser.set_defaults(func=build_prod)
 parser.parse_args(namespace=options)
 
