@@ -27,10 +27,32 @@ import argparse
 import docker
 import json
 import os
+import re
+import requests
 import sys
+
+from collections import namedtuple
 
 def err(arg):
     print('{PROG}: {ARG}'.format(PROG=sys.argv[0], ARG=arg), file=sys.stderr)
+
+Repository = namedtuple('Repository', ['domain', 'port', 'image', 'tag'])
+repoMatcher = re.compile(r'(?:'
+        r'(?P<domain>localhost|(?:[-_\w]+\.[-_\w]+)+|[-_\w]+(?=:))'
+        r'(?::(?P<port>\d{1,5}))?'
+        r'/)?'
+        r'(?P<image>[-_./\w]+)'
+        r'(?::(?P<tag>[-_.\w]+))?')
+def getRepoFromString(str):
+    '''This matches more than is valid, but not less than is valid. Notably,
+        * Slash in the registry portion
+        * Adjacent periods are accepted
+    But, you had an invalid repo name if you hit either of those.'''
+    m = repoMatcher.search(str)
+    return Repository(domain=m.group('domain'),
+            port=m.group('port'),
+            image=m.group('image'),
+            tag=m.group('tag'))
 
 def print_formatted(line):
     if options.debug:
@@ -51,6 +73,21 @@ def build(args):
     if not hasattr(args, 'image') or not args.image:
         err('No image name was specified. Edit your Controlfile or specify with -i')
         exit(3)
+    if os.path.isfile(args.dockerfile):
+        with open(args.dockerfile, 'r') as f:
+            for line in f:
+                if line.startswith('FROM'):
+                    upstream = getRepoFromString(line.split()[1])
+                    break
+    r = requests.get(
+            'https://{domain}:{port}/v2/{image}/manifests/{tag}'.format(domain=upstream.domain,
+                port=upstream.port,
+                image=upstream.image,
+                tag=upstream.tag),
+            verify='/etc/docker/certs.d/{domain}:{port}/ca.crt'.format(domain=upstream.domain,
+                port=upstream.port))
+    print(r.text)
+    exit(-1)
     if not args.dry_run:
         for line in (json.loads(l.decode('utf-8').strip()) for l in docker.build(path='.',
                 tag=args.image,
