@@ -8,6 +8,11 @@
 # code, kiss babies, and be popular.
 #
 # We really don't expect much of it. /s
+#
+# Exit codes:
+# 1 - Control operation failed, check output
+# 2 - Something failed early (Docker daemon not started, malformed Controlfile)
+# 3 - Operation pre-check failed
 
 # Things that are needed:
 #   - Clearly defined global options when ./control is run
@@ -45,7 +50,7 @@ def build(args):
         print('running docker build')
     if not hasattr(args, 'image') or not args.image:
         err('No image name was specified. Edit your Controlfile or specify with -i')
-        exit(1)
+        exit(3)
     if not args.dry_run:
         for line in (json.loads(l.decode('utf-8').strip()) for l in docker.build(path='.',
                 tag=args.image,
@@ -63,7 +68,7 @@ def build_prod(args):
         print('running docker build')
     if not hasattr(args, 'image') or not args.image:
         err('No image name was specified. Edit your Controlfile or specify with -i')
-        exit(1)
+        exit(3)
     if not args.dry_run:
         for line in (json.loads(l.decode('utf-8').strip()) for l in docker.build(path='.',
                 tag=args.image,
@@ -97,7 +102,7 @@ if os.path.isfile('Controlfile'):
             vars(options).update(json.load(f))
         except json.decoder.JSONDecodeError as e:
             err('Malformed Controlfile. Not valid JSON: {}'.format(str(e)))
-            exit(1)
+            exit(2)
 else:
     # TODO: When, eventually, you have to do parsing to override defaults and you move to configparser, change this to print conditionally
     print('No Controlfile. Proceeding with defaults')
@@ -111,6 +116,7 @@ parser.add_argument('-n', '--dry-run', action='store_true', help='Pretend to exe
 parser.add_argument('-V', '--version', action='version', version='%(prog)s v{}'.format(options.version))
 parser.set_defaults(func=build)
 subparsers = parser.add_subparsers()
+
 # TODO: add child parsers that handle the individual actions
 build_parser = subparsers.add_parser('build', description='Build an image')
 build_parser.add_argument('-i', '--image', default=options.image, help='override the tagged name of the image being built')
@@ -119,13 +125,13 @@ build_parser.add_argument('--no-cache', action='store_true', help='do not use th
 build_parser.add_argument('--no-rm', action='store_false', help='do not remove any images, even on success')
 build_parser.add_argument('--no-pull', action='store_false', help='do not pull newer versions of the base image')
 build_parser.set_defaults(func=build)
+
 buildprod_parser = subparsers.add_parser('build-prod', description='''Build a production
         image. This is the option used by Jenkins. No other options will be
         specified, so pick good defaults. Writes a file IMAGES.txt which is a
         newline delimited file of the images that should be pushed to the
         registry.''')
 buildprod_parser.add_argument('-i', '--image', default=options.image, help='override the tagged name of the image being built')
-buildprod_parser.add_argument('--dockerfile', default=options.dockerfile, help='override the dockerfile used to build the image')
 buildprod_parser.add_argument('--no-cache', default=True, action='store_true', help='allow the build to use the cache')
 buildprod_parser.set_defaults(func=build_prod)
 parser.parse_args(namespace=options)
