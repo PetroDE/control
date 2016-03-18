@@ -54,6 +54,19 @@ def getRepoFromString(str):
             image=m.group('image'),
             tag=m.group('tag'))
 
+# TODO: finish
+def isImageNewer(repo):
+    r = requests.get(
+            'https://{domain}:{port}/v2/{image}/manifests/{tag}'.format(domain=upstream.domain,
+                port=upstream.port,
+                image=upstream.image,
+                tag=upstream.tag),
+            verify='/etc/docker/certs.d/{domain}:{port}/ca.crt'.format(domain=upstream.domain,
+                port=upstream.port))
+    print(r.text)
+    exit(-1)
+
+
 def print_formatted(line):
     if options.debug:
         print('bytes: {}'.format(line))
@@ -79,15 +92,8 @@ def build(args):
                 if line.startswith('FROM'):
                     upstream = getRepoFromString(line.split()[1])
                     break
-    r = requests.get(
-            'https://{domain}:{port}/v2/{image}/manifests/{tag}'.format(domain=upstream.domain,
-                port=upstream.port,
-                image=upstream.image,
-                tag=upstream.tag),
-            verify='/etc/docker/certs.d/{domain}:{port}/ca.crt'.format(domain=upstream.domain,
-                port=upstream.port))
-    print(r.text)
-    exit(-1)
+    if isImageNewer(upstream):
+        pass
     if not args.dry_run:
         for line in (json.loads(l.decode('utf-8').strip()) for l in docker.build(path='.',
                 tag=args.image,
