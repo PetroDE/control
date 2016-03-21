@@ -169,11 +169,11 @@ build_parser.add_argument('--no-rm', action='store_false', help='do not remove a
 build_parser.add_argument('--no-pull', action='store_false', help='do not pull newer versions of the base image')
 build_parser.set_defaults(func=build)
 
-buildprod_parser = subparsers.add_parser('build-prod', description='''Build a production
-        image. This is the option used by Jenkins. No other options will be
-        specified, so pick good defaults. Writes a file IMAGES.txt which is a
-        newline delimited file of the images that should be pushed to the
-        registry.''')
+buildprod_parser = subparsers.add_parser('build-prod', description='''Build a
+        production image. This is the option used by Jenkins. No other options
+        will be specified, so pick good defaults. Writes a file IMAGES.txt
+        which is a newline delimited file of the images that should be pushed
+        to the registry.''')
 buildprod_parser.add_argument('-i', '--image', default=options.image, help='override the tagged name of the image being built')
 buildprod_parser.add_argument('--no-cache', default=True, action='store_true', help='allow the build to use the cache')
 buildprod_parser.set_defaults(func=build_prod)
