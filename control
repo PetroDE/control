@@ -36,26 +36,50 @@ from collections import namedtuple
 def err(arg):
     print('{PROG}: {ARG}'.format(PROG=sys.argv[0], ARG=arg), file=sys.stderr)
 
+def info(arg):
+    print('[INFO] {ARG}'.format(ARG=arg), file=sys.stderr)
+
 Repository = namedtuple('Repository', ['domain', 'port', 'image', 'tag'])
+
+def is_repo_from_hub(repo):
+    # repo.domain and True is a way to force python into returning truthy values
+    return repo.domain and True
+
 repoMatcher = re.compile(r'(?:'
         r'(?P<domain>localhost|(?:[-_\w]+\.[-_\w]+)+|[-_\w]+(?=:))'
         r'(?::(?P<port>\d{1,5}))?'
         r'/)?'
         r'(?P<image>[-_./\w]+)'
         r'(?::(?P<tag>[-_.\w]+))?')
-def getRepoFromString(str):
+def get_repo_from_string(str):
     '''This matches more than is valid, but not less than is valid. Notably,
         * Slash in the registry portion
         * Adjacent periods are accepted
     But, you had an invalid repo name if you hit either of those.'''
     m = repoMatcher.search(str)
-    return Repository(domain=m.group('domain'),
+    repo = Repository(domain=m.group('domain'),
             port=m.group('port'),
             image=m.group('image'),
             tag=m.group('tag'))
+    if repo.tag == None:
+        repo.tag = 'latest'
+    return repo
+
+def get_image_id_from_hub(repo):
+    if options.debug:
+        pass
+    layers_list = json.load(requests.get('https://index.docker.io/v1/repositories/{image}/tags/{tag}'.format(
+        image=repo.image,
+        tag=repo.tag)))
+    list_of_tags = json.load(requests.get('https://index.docker.io/v1/repositories/{image}/tags'.format(
+        image=repo.image)))
+    info(layers_list)
+    info("")
+    info(list_of_tags)
+    exit(-1)
 
 # TODO: finish
-def isImageNewer(repo):
+def is_image_newer(repo):
     r = requests.get(
             'https://{domain}:{port}/v2/{image}/manifests/{tag}'.format(domain=upstream.domain,
                 port=upstream.port,
@@ -92,7 +116,7 @@ def build(args):
                 if line.startswith('FROM'):
                     upstream = getRepoFromString(line.split()[1])
                     break
-    if isImageNewer(upstream):
+    if is_image_newer(upstream):
         pass
     if not args.dry_run:
         for line in (json.loads(l.decode('utf-8').strip()) for l in docker.build(path='.',
