@@ -15,6 +15,7 @@
 # 3 - Operation pre-check failed
 
 # Things that are needed:
+#   - Add handling for --pull --no-pull and default behavior
 #   - Clearly defined global options when ./control is run
 #   - Clearly defined options when ./control build is run
 #   - Override global defaults with Controlfile
@@ -34,16 +35,24 @@ import sys
 from collections import namedtuple
 
 def err(arg):
-    print('{PROG}: {ARG}'.format(PROG=sys.argv[0], ARG=arg), file=sys.stderr)
+    log(arg, level='ERR')
 
-def info(arg):
-    print('[INFO] {ARG}'.format(ARG=arg), file=sys.stderr)
+def log(arg, level='info'):
+    if level == 'info' or (level == 'debug' and options.debug):
+        print('[{LEVEL:5s}] {ARG}'.format(LEVEL=level.upper(), ARG=arg), file=sys.stderr)
 
 Repository = namedtuple('Repository', ['domain', 'port', 'image', 'tag'])
 
 def is_repo_from_hub(repo):
-    # repo.domain and True is a way to force python into returning truthy values
-    return repo.domain and True
+    log('is_repo_from_hub', level='debug')
+    # If a domain is set, repo.domain is truthy, not truthy is False
+    layers_list = None
+    if not repo.domain:
+        layers_list = requests.get(
+                'https://index.docker.io/v1/repositories/{image}/tags/{tag}'.format(
+                    image=repo.image,
+                    tag=repo.tag))
+    return (layers_list.status_code == requests.codes.ok, layers_list)
 
 repoMatcher = re.compile(r'(?:'
         r'(?P<domain>localhost|(?:[-_\w]+\.[-_\w]+)+|[-_\w]+(?=:))'
@@ -60,34 +69,57 @@ def get_repo_from_string(str):
     repo = Repository(domain=m.group('domain'),
             port=m.group('port'),
             image=m.group('image'),
-            tag=m.group('tag'))
-    if repo.tag == None:
-        repo.tag = 'latest'
+            tag=m.group('tag') or 'latest')
     return repo
 
-def get_image_id_from_hub(repo):
-    if options.debug:
-        pass
-    layers_list = json.load(requests.get('https://index.docker.io/v1/repositories/{image}/tags/{tag}'.format(
-        image=repo.image,
-        tag=repo.tag)))
-    list_of_tags = json.load(requests.get('https://index.docker.io/v1/repositories/{image}/tags'.format(
-        image=repo.image)))
-    info(layers_list)
-    info("")
-    info(list_of_tags)
-    exit(-1)
+def get_image_id_from_hub(repo, layers_list):
+    log('get_image_id_from_hub', level='debug')
+    log(layers_list.json(), level='debug')
+    # HEY YOU! If you're finding that Control is not checking against the Hub
+    # correctly it may be because the Hub has changed their API recently.
+    # Currently (2016-03-21), we assume that the first layer in the list of
+    # layers for the tag, is the ID we want. They may change their sorting in
+    # future. If they do you'll want to poll a URL that looks like
+    # https://index.docker.io/v1/repositories/{image}/tags
+    # and do a name lookup on the tag for the ID short-code. Have fun!
+    layer = layers_list.json()[0]['id']
+    list_of_images = requests.get(
+            'https://index.docker.io/v1/repositories/{image}/images'.format(
+                image=repo.image))
+    image_id = next((i['id'] for i in list_of_images.json() if i['id'].startswith(layer)))
+    log('Upstream image id: {}'.format(image_id), level='debug')
+    return image_id
 
 # TODO: finish
-def is_image_newer(repo):
-    r = requests.get(
-            'https://{domain}:{port}/v2/{image}/manifests/{tag}'.format(domain=upstream.domain,
-                port=upstream.port,
-                image=upstream.image,
-                tag=upstream.tag),
-            verify='/etc/docker/certs.d/{domain}:{port}/ca.crt'.format(domain=upstream.domain,
-                port=upstream.port))
-    print(r.text)
+def is_image_newer(base):
+    if base.image == 'scratch':
+        err('Control does not handle building FROM scratch yet')
+        exit(1)
+    elif base.domain:
+        #TODO: Check if in private base
+        err('Control does not check private repos yet')
+        #r = requests.get(
+        #        'https://{domain}:{port}/v2/{image}/manifests/{tag}'.format(domain=upstream.domain,
+        #            port=upstream.port,
+        #            image=upstream.image,
+        #            tag=upstream.tag),
+        #        verify='/etc/docker/certs.d/{domain}:{port}/ca.crt'.format(domain=upstream.domain,
+        #            port=upstream.port))
+        #log(r.text)
+    else:
+        print('Querying Docker Hub image ID of base {}:{}'.format(base.image, base.tag))
+        (result, response) = is_repo_from_hub(base)
+        # TODO: every time you come back to these lines you think they should be info
+        if not result and response.text == 'Tag not found':
+            log('Response code: {} {}'.format(response.status_code, response.text), level='debug')
+        elif not result:
+            log('Response code: {} Image not found'.format(response.status_code), level='debug')
+
+        if result:
+            updated_id = get_image_id_from_hub(base, response)
+        else:
+            # TODO: Upstream is only local
+            pass
     exit(-1)
 
 
@@ -114,7 +146,7 @@ def build(args):
         with open(args.dockerfile, 'r') as f:
             for line in f:
                 if line.startswith('FROM'):
-                    upstream = getRepoFromString(line.split()[1])
+                    upstream = get_repo_from_string(line.split()[1])
                     break
     if is_image_newer(upstream):
         pass
