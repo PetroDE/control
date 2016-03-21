@@ -136,7 +136,7 @@ opts['dockerfile'] = 'Dockerfile'
 opts['no_cache'] = False
 opts['no_rm'] = True
 opts['no_pull'] = True
-opts['version'] = '1.2'
+opts['version'] = '1.3'
 
 # Read in a Controlfile if one exists
 if os.path.isfile('Controlfile'):
