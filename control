@@ -35,10 +35,13 @@ import sys
 from collections import namedtuple
 
 def err(arg):
-    log(arg, level='ERR')
+    log(arg, level='error')
 
 def log(arg, level='info'):
-    if level == 'info' or (level == 'debug' and options.debug):
+    if (level == 'info' or
+            level == 'error' or
+            (level == 'warn' and options.debug) or
+            (level == 'debug' and options.debug)):
         print('[{LEVEL:5s}] {ARG}'.format(LEVEL=level.upper(), ARG=arg), file=sys.stderr)
 
 Repository = namedtuple('Repository', ['domain', 'port', 'image', 'tag'])
@@ -92,6 +95,7 @@ def get_image_id_from_hub(repo, layers_list):
 
 # TODO: finish
 def is_image_newer(base):
+    log('is_image_newer', level='debug')
     if base.image == 'scratch':
         err('Control does not handle building FROM scratch yet')
         exit(1)
@@ -109,6 +113,8 @@ def is_image_newer(base):
     else:
         print('Querying Docker Hub image ID of base {}:{}'.format(base.image, base.tag))
         (result, response) = is_repo_from_hub(base)
+        local_image = docker.images('{}:{}'.format(base.image, base.tag))
+        log(local_image, level='debug')
         # TODO: every time you come back to these lines you think they should be info
         if not result and response.text == 'Tag not found':
             log('Response code: {} {}'.format(response.status_code, response.text), level='debug')
@@ -121,7 +127,6 @@ def is_image_newer(base):
             # TODO: Upstream is only local
             pass
     exit(-1)
-
 
 def print_formatted(line):
     if options.debug:
@@ -148,6 +153,9 @@ def build(args):
                 if line.startswith('FROM'):
                     upstream = get_repo_from_string(line.split()[1])
                     break
+    else:
+        err('Dockerfile does not exist')
+        exit(3)
     if is_image_newer(upstream):
         pass
     if not args.dry_run:
