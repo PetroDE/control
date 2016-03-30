@@ -92,58 +92,43 @@ def get_repo_from_string(str):
             tag=m.group('tag') or 'latest')
     return repo
 
-def get_image_id_from_hub(repo, layers_list):
-    log('get_image_id_from_hub', level='debug')
-    log(layers_list.json(), level='debug')
-    # HEY YOU! If you're finding that Control is not checking against the Hub
-    # correctly it may be because the Hub has changed their API recently.
-    # Currently (2016-03-21), we assume that the first layer in the list of
-    # layers for the tag, is the ID we want. They may change their sorting in
-    # future. If they do you'll want to poll a URL that looks like
-    # https://index.docker.io/v1/repositories/{image}/tags
-    # and do a name lookup on the tag for the ID short-code. Have fun!
-    layer = layers_list.json()[0]['id']
-    list_of_images = requests.get(
-            'https://index.docker.io/v1/repositories/{image}/images'.format(
-                image=repo.image))
-    image_id = next((i['id'] for i in list_of_images.json() if i['id'].startswith(layer)))
-    log('Upstream image id: {}'.format(image_id), level='debug')
-    return image_id
-
 # TODO: finish
-def is_image_newer(base):
+def image_is_newer(base):
     log('is_image_newer', level='debug')
     if base.image == 'scratch':
         err('Control does not handle building FROM scratch yet')
         exit(1)
-    elif base.domain:
-        #TODO: Check if in private base
-        err('Control does not check private repos yet')
-        #r = requests.get(
-        #        'https://{domain}:{port}/v2/{image}/manifests/{tag}'.format(domain=upstream.domain,
-        #            port=upstream.port,
-        #            image=upstream.image,
-        #            tag=upstream.tag),
-        #        verify='/etc/docker/certs.d/{domain}:{port}/ca.crt'.format(domain=upstream.domain,
-        #            port=upstream.port))
-        #log(r.text)
-    else:
-        print('Querying Docker Hub image ID of base {}:{}'.format(base.image, base.tag))
-        (result, response) = is_repo_from_hub(base)
-        local_image = docker.images('{}:{}'.format(base.image, base.tag))
-        log(local_image, level='debug')
-        # TODO: every time you come back to these lines you think they should be info
-        if not result and response.text == 'Tag not found':
-            log('Response code: {} {}'.format(response.status_code, response.text), level='debug')
-        elif not result:
-            log('Response code: {} Image not found'.format(response.status_code), level='debug')
+    elif not base.registry:
+        return True #Giving up on any kind of intelligence in dealing with the Hub.
 
-        if result:
-            updated_id = get_image_id_from_hub(base, response)
+    log('Contacting registry at {}'.format(base.registry), level='debug')
+    #TODO: Need to log into registries
+    try:
+        if os.path.isdir('/etc/docker/certs.d/{}'.format(base.registry)):
+            r = requests.get(
+                    'https://{registry}/v2/{image}/manifests/{tag}'.format(registry=base.registry,
+                        image=base.image,
+                        tag=base.tag),
+                    verify='/etc/docker/certs.d/{registry}/ca.crt'.format(registry=base.registry))
         else:
-            # TODO: Upstream is only local
-            pass
+            log('road less taken', level='debug')
+            r = requests.get(
+                    'https://{registry}/v2/{image}/manifests/{tag}'.format(registry=base.registry,
+                        image=base.image,
+                        tag=base.tag))
+        log(r.text)
+    except requests.exceptions.SSLError as e:
+        err(e)
     exit(-1)
+
+def pulling(repo):
+    '''We make use of the difference between None and False, so explicit
+    checking against False or True is necessary.'''
+    if options.pull == False:
+        return False
+    elif options.func.__name__ == 'build' and not repo.registry and not options.pull:
+        return False
+    return True
 
 def print_formatted(line):
     if options.debug:
@@ -173,14 +158,13 @@ def build(args):
     else:
         err('Dockerfile does not exist')
         exit(3)
-    if is_image_newer(upstream):
+    if pulling(upstream) and image_is_newer(upstream):
         pass
     if not args.dry_run:
         for line in (json.loads(l.decode('utf-8').strip()) for l in docker.build(path='.',
                 tag=args.image,
                 nocache=args.no_cache,
                 rm=args.no_rm,
-                pull=args.no_pull,
                 dockerfile=args.dockerfile)):
             print_formatted(line)
             if 'error' in line.keys():
@@ -188,6 +172,8 @@ def build(args):
     return True
 
 def build_prod(args):
+    if args.pull == None:
+        args.pull = True
     if args.debug or args.dry_run:
         print('running docker build')
     if not hasattr(args, 'image') or not args.image:
@@ -198,7 +184,7 @@ def build_prod(args):
                 tag=args.image,
                 nocache=args.no_cache,
                 rm=args.no_rm,
-                pull=args.no_pull,
+                pull=args.pull,
                 dockerfile=args.dockerfile)):
             print_formatted(line)
             if 'error' in line.keys():
@@ -216,7 +202,7 @@ opts['image'] = None
 opts['dockerfile'] = 'Dockerfile'
 opts['no_cache'] = False
 opts['no_rm'] = True
-opts['no_pull'] = True
+opts['pull'] = None
 opts['version'] = '1.3'
 
 # Read in a Controlfile if one exists
@@ -247,7 +233,8 @@ build_parser.add_argument('-i', '--image', default=options.image, help='override
 build_parser.add_argument('--dockerfile', default=options.dockerfile, help='override the dockerfile used to build the image')
 build_parser.add_argument('--no-cache', action='store_true', help='do not use the cache')
 build_parser.add_argument('--no-rm', action='store_false', help='do not remove any images, even on success')
-build_parser.add_argument('--no-pull', action='store_false', help='do not pull newer versions of the base image')
+build_parser.add_argument('--pull', action='store_const', const=True, help='pull the image from upstream')
+build_parser.add_argument('--no-pull', action='store_const', const=False, dest='pull', help='do not pull newer versions of the base image')
 build_parser.set_defaults(func=build)
 
 buildprod_parser = subparsers.add_parser('build-prod', description='''Build a
@@ -257,6 +244,7 @@ buildprod_parser = subparsers.add_parser('build-prod', description='''Build a
         to the registry.''')
 buildprod_parser.add_argument('-i', '--image', default=options.image, help='override the tagged name of the image being built')
 buildprod_parser.add_argument('--no-cache', default=True, action='store_true', help='allow the build to use the cache')
+buildprod_parser.add_argument('--no-pull', action='store_const', const=False, dest='pull', help='do not pull newer versions of the base image')
 buildprod_parser.set_defaults(func=build_prod)
 parser.parse_args(namespace=options)
 
