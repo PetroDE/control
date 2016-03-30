@@ -32,8 +32,6 @@ import re
 import requests
 import sys
 
-from collections import namedtuple
-
 def err(arg):
     log(arg, level='error')
 
@@ -44,7 +42,26 @@ def log(arg, level='info'):
             (level == 'debug' and options.debug)):
         print('[{LEVEL:5s}] {ARG}'.format(LEVEL=level.upper(), ARG=arg), file=sys.stderr)
 
-Repository = namedtuple('Repository', ['domain', 'port', 'image', 'tag'])
+class Repository:
+    def __init__(self, image, tag='latest', domain=None, port=None):
+        self.domain = domain
+        self.port = port
+        self.image = image
+        self.tag = tag
+        if domain and port:
+            self.registry = '{}:{}'.format(self.domain, self.port)
+            self.repo = '{}:{}/{}:{}'.format(self.domain,
+                    self.port,
+                    self.image,
+                    self.port)
+        elif domain:
+            self.registry = '{}'.format(self.domain)
+            self.repo = '{}/{}:{}'.format(self.domain,
+                    self.image,
+                    self.port)
+        else:
+            self.registry = False
+            self.repo = '{}:{}'.format(self.image, self.port)
 
 def is_repo_from_hub(repo):
     log('is_repo_from_hub', level='debug')
