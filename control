@@ -42,6 +42,26 @@ def log(arg, level='info'):
             (level == 'debug' and options.debug)):
         print('[{LEVEL:5s}] {ARG}'.format(LEVEL=level.upper(), ARG=arg), file=sys.stderr)
 
+class Registry:
+    def __init__(self, domain, port=None):
+        self.domain = domain
+        self.port = port
+        if port:
+            self.endpoint = '{}:{}'.format(self.domain, self.port)
+        else:
+            self.endpoint = self.domain
+        certdir = '/etc/docker/certs.d/{reg}'.format(reg=endpoint)
+        if os.path.isdir(certdir):
+            for certfile in map(lambda x: '{}/{}'.format(certdir, x), os.listdir(certdir)):
+                try:
+                    r = requests.get(
+                            'https://{registry}/v0'.format(registry=base.registry),
+                            verify=certfile)
+                except requests.exceptions.SSLError as e:
+                    continue
+                self.certfile = certfile
+
+
 class Repository:
     #This matches more than is valid, but not less than is valid. Notably,
     #    * Slash in the registry portion
