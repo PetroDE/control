@@ -43,6 +43,17 @@ def log(arg, level='info'):
         print('[{LEVEL:5s}] {ARG}'.format(LEVEL=level.upper(), ARG=arg), file=sys.stderr)
 
 class Repository:
+    #This matches more than is valid, but not less than is valid. Notably,
+    #    * Slash in the registry portion
+    #    * Adjacent periods are accepted
+    #But, you had an invalid repo name if you hit either of those.
+    matcher = re.compile(r'(?:'
+            r'(?P<domain>localhost|(?:[-_\w]+\.[-_\w]+)+|[-_\w]+(?=:))'
+            r'(?::(?P<port>\d{1,5}))?'
+            r'/)?'
+            r'(?P<image>[-_./\w]+)'
+            r'(?::(?P<tag>[-_.\w]+))?')
+
     def __init__(self, image, tag='latest', domain=None, port=None):
         self.domain = domain
         self.port = port
@@ -63,23 +74,13 @@ class Repository:
             self.registry = False
             self.repo = '{}:{}'.format(self.image, self.port)
 
-repoMatcher = re.compile(r'(?:'
-        r'(?P<domain>localhost|(?:[-_\w]+\.[-_\w]+)+|[-_\w]+(?=:))'
-        r'(?::(?P<port>\d{1,5}))?'
-        r'/)?'
-        r'(?P<image>[-_./\w]+)'
-        r'(?::(?P<tag>[-_.\w]+))?')
-def get_repo_from_string(str):
-    '''This matches more than is valid, but not less than is valid. Notably,
-        * Slash in the registry portion
-        * Adjacent periods are accepted
-    But, you had an invalid repo name if you hit either of those.'''
-    m = repoMatcher.search(str)
-    repo = Repository(domain=m.group('domain'),
-            port=m.group('port'),
-            image=m.group('image'),
-            tag=m.group('tag') or 'latest')
-    return repo
+    @classmethod
+    def match(cls, text):
+        m = Repository.matcher.search(text)
+        return Repository(domain=m.group('domain'),
+                port=m.group('port'),
+                image=m.group('image'),
+                tag=m.group('tag'))
 
 # TODO: finish
 def image_is_newer(base):
@@ -142,7 +143,7 @@ def build(args):
         with open(args.dockerfile, 'r') as f:
             for line in f:
                 if line.startswith('FROM'):
-                    upstream = get_repo_from_string(line.split()[1])
+                    upstream = Repository.match(line.split()[1])
                     break
     else:
         err('Dockerfile does not exist')
