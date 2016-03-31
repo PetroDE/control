@@ -63,17 +63,6 @@ class Repository:
             self.registry = False
             self.repo = '{}:{}'.format(self.image, self.port)
 
-def is_repo_from_hub(repo):
-    log('is_repo_from_hub', level='debug')
-    # If a domain is set, repo.domain is truthy, not truthy is False
-    layers_list = None
-    if not repo.domain:
-        layers_list = requests.get(
-                'https://index.docker.io/v1/repositories/{image}/tags/{tag}'.format(
-                    image=repo.image,
-                    tag=repo.tag))
-    return (layers_list.status_code == requests.codes.ok, layers_list)
-
 repoMatcher = re.compile(r'(?:'
         r'(?P<domain>localhost|(?:[-_\w]+\.[-_\w]+)+|[-_\w]+(?=:))'
         r'(?::(?P<port>\d{1,5}))?'
