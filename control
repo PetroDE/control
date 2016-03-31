@@ -25,6 +25,7 @@
 
 import argparse
 #import configparser
+import base64
 import docker
 import json
 import os
@@ -50,17 +51,55 @@ class Registry:
             self.endpoint = '{}:{}'.format(self.domain, self.port)
         else:
             self.endpoint = self.domain
-        certdir = '/etc/docker/certs.d/{reg}'.format(reg=endpoint)
+        # TODO support insecure registries and V1 registries
+        self.baseuri = 'https://{}/v2'.format(self.endpoint)
+        certdir = '/etc/docker/certs.d/{reg}'.format(reg=self.endpoint)
+        self.certfile = None
+        self.session = requests.Session()
+        if os.path.isfile(os.path.expanduser('~/.docker/config.json')):
+            with open(os.path.expanduser('~/.docker/config.json')) as f:
+                try:
+                    j = json.load(f)
+                    self.session.auth = tuple(base64.b64decode(
+                            j['auths']['https://{}'.format(self.endpoint)]['auth']
+                            ).decode('utf-8').split(':'))
+                    log('setting basicauth', level='debug')
+                except json.decoder.JSONDecodeError as e:
+                    log('Docker config file not valid JSON: {}'.format(str(e)), level='warn')
+                except KeyError:
+                    pass
         if os.path.isdir(certdir):
             for certfile in map(lambda x: '{}/{}'.format(certdir, x), os.listdir(certdir)):
                 try:
-                    r = requests.get(
-                            'https://{registry}/v0'.format(registry=base.registry),
+                    r = self.session.get(
+                            'https://{}/v0'.format(self.endpoint),
                             verify=certfile)
                 except requests.exceptions.SSLError as e:
+                    log('Cert file rejected {}'.format(certfile), level='debug')
                     continue
+                log('Setting verify', level='debug')
                 self.certfile = certfile
+                break
+        r = self.get('https://{}/v0'.format(self.endpoint))
+        if r.status_code == 401:
+            print('You are not logged into registry {}\nRun docker login'.format(self.endpoint))
+            if options.pull:
+                exit(3)
 
+    def get(self, uri):
+        if self.certfile:
+            return self.session.get(uri, verify=self.certfile)
+        return self.session.get(uri)
+
+    def get_id_of_repo(self, repo):
+        r = self.get('{base}/{image}/manifests/{tag}'.format(base=self.baseuri,
+            image=repo.image,
+            tag=repo.tag))
+        if r.status_code == 200:
+            log(r.text)
+        else:
+            log(r.status_code)
+            log(r.text)
 
 class Repository:
     #This matches more than is valid, but not less than is valid. Notably,
@@ -112,23 +151,25 @@ def image_is_newer(base):
         return True #Giving up on any kind of intelligence in dealing with the Hub.
 
     log('Contacting registry at {}'.format(base.registry), level='debug')
+    reg = Registry(base.domain, base.port)
+    reg.get_id_of_repo(base)
     #TODO: Need to log into registries
-    try:
-        if os.path.isdir('/etc/docker/certs.d/{}'.format(base.registry)):
-            r = requests.get(
-                    'https://{registry}/v2/{image}/manifests/{tag}'.format(registry=base.registry,
-                        image=base.image,
-                        tag=base.tag),
-                    verify='/etc/docker/certs.d/{registry}/ca.crt'.format(registry=base.registry))
-        else:
-            log('road less taken', level='debug')
-            r = requests.get(
-                    'https://{registry}/v2/{image}/manifests/{tag}'.format(registry=base.registry,
-                        image=base.image,
-                        tag=base.tag))
-        log(r.text)
-    except requests.exceptions.SSLError as e:
-        err(e)
+    #try:
+    #    if os.path.isdir('/etc/docker/certs.d/{}'.format(base.registry)):
+    #        r = requests.get(
+    #                'https://{registry}/v2/{image}/manifests/{tag}'.format(registry=base.registry,
+    #                    image=base.image,
+    #                    tag=base.tag),
+    #                verify='/etc/docker/certs.d/{registry}/ca.crt'.format(registry=base.registry))
+    #    else:
+    #        log('road less taken', level='debug')
+    #        r = requests.get(
+    #                'https://{registry}/v2/{image}/manifests/{tag}'.format(registry=base.registry,
+    #                    image=base.image,
+    #                    tag=base.tag))
+    #    log(r.json())
+    #except requests.exceptions.SSLError as e:
+    #    err(e)
     exit(-1)
 
 def pulling(repo):
