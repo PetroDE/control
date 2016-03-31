@@ -68,7 +68,9 @@ class Registry:
                     log('Docker config file not valid JSON: {}'.format(str(e)), level='warn')
                 except KeyError:
                     pass
-        if os.path.isdir(certdir):
+        if options.no_verify:
+            self.certfile = False
+        elif os.path.isdir(certdir):
             for certfile in map(lambda x: '{}/{}'.format(certdir, x), os.listdir(certdir)):
                 try:
                     r = self.session.get(
@@ -90,6 +92,10 @@ class Registry:
             if not options.no_verify:
                 err('Cannot verify that you are connecting to the registry you think you are')
                 exit(3)
+        except requests.exceptions.ConnectionError as e:
+            err('registry {reg} could not be contacted: {msg}'.format(reg=self.endpoint,
+                msg=e))
+            exit(3)
 
     def get(self, uri):
         if self.certfile:
