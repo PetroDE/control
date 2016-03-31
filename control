@@ -289,6 +289,7 @@ build_parser.add_argument('-i', '--image', default=options.image, help='override
 build_parser.add_argument('--dockerfile', default=options.dockerfile, help='override the dockerfile used to build the image')
 build_parser.add_argument('--no-cache', action='store_true', help='do not use the cache')
 build_parser.add_argument('--no-rm', action='store_false', help='do not remove any images, even on success')
+build_parser.add_argument('--no-verify', action='store_true', help='do not check the validity of the registry\'s SSL cert')
 build_parser.add_argument('--pull', action='store_const', const=True, help='pull the image from upstream')
 build_parser.add_argument('--no-pull', action='store_const', const=False, dest='pull', help='do not pull newer versions of the base image')
 build_parser.set_defaults(func=build)
