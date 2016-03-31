@@ -80,10 +80,15 @@ class Registry:
                 log('Setting verify', level='debug')
                 self.certfile = certfile
                 break
-        r = self.get('https://{}/v0'.format(self.endpoint))
-        if r.status_code == 401:
-            print('You are not logged into registry {}\nRun docker login'.format(self.endpoint))
-            if options.pull:
+        try:
+            r = self.get('https://{}/v0'.format(self.endpoint))
+            if r.status_code == 401:
+                print('You are not logged into registry {}\nRun docker login'.format(self.endpoint))
+                if options.pull:
+                    exit(3)
+        except requests.exceptions.SSLError as e:
+            if not options.no_verify:
+                err('Cannot verify that you are connecting to the registry you think you are')
                 exit(3)
 
     def get(self, uri):
