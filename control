@@ -31,7 +31,12 @@ import json
 import os
 import re
 import requests
+from requests.packages.urllib3.exceptions import InsecureRequestWarning
 import sys
+
+# Shut up requests because the user has to make a conscious choice to be
+# insecure
+requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 
 def err(arg):
     log(arg, level='error')
@@ -54,7 +59,7 @@ class Registry:
         # TODO support insecure registries and V1 registries
         self.baseuri = 'https://{}/v2'.format(self.endpoint)
         certdir = '/etc/docker/certs.d/{reg}'.format(reg=self.endpoint)
-        self.certfile = None
+        self.use_cert = False
         self.session = requests.Session()
         if os.path.isfile(os.path.expanduser('~/.docker/config.json')):
             with open(os.path.expanduser('~/.docker/config.json')) as f:
@@ -70,9 +75,11 @@ class Registry:
                     pass
         if options.no_verify:
             self.certfile = False
+            self.use_cert = True
         elif os.path.isdir(certdir):
             for certfile in map(lambda x: '{}/{}'.format(certdir, x), os.listdir(certdir)):
                 try:
+                    log('trying certfile {}'.format(certfile), level='debug')
                     r = self.session.get(
                             'https://{}/v0'.format(self.endpoint),
                             verify=certfile)
@@ -81,6 +88,7 @@ class Registry:
                     continue
                 log('Setting verify', level='debug')
                 self.certfile = certfile
+                self.use_cert = True
                 break
         try:
             r = self.get('https://{}/v0'.format(self.endpoint))
@@ -98,7 +106,7 @@ class Registry:
             exit(3)
 
     def get(self, uri):
-        if self.certfile:
+        if self.use_cert:
             return self.session.get(uri, verify=self.certfile)
         return self.session.get(uri)
 
