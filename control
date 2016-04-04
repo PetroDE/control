@@ -296,18 +296,6 @@ opts['no_rm'] = True
 opts['pull'] = None
 opts['version'] = '1.4'
 
-# Read in a Controlfile if one exists
-if os.path.isfile('Controlfile'):
-    with open('Controlfile', 'r') as f:
-        try:
-            vars(options).update(json.load(f))
-        except json.decoder.JSONDecodeError as e:
-            err('Malformed Controlfile. Not valid JSON: {}'.format(str(e)))
-            sys.exit(2)
-else:
-    # TODO: When, eventually, you have to do parsing to override defaults and you move to configparser, change this to print conditionally
-    print('No Controlfile. Proceeding with defaults')
-
 # If you set a value that has a default, set it up above, then you must
 # reference that default here, otherwise it will be clobbered
 parser = argparse.ArgumentParser(description='Control the building and running of images and containers')
@@ -339,6 +327,18 @@ buildprod_parser.add_argument('--no-cache', default=True, action='store_true', h
 buildprod_parser.add_argument('--no-pull', action='store_const', const=False, dest='pull', help='do not pull newer versions of the base image')
 buildprod_parser.set_defaults(func=build_prod)
 parser.parse_args(namespace=options)
+
+# Read in a Controlfile if one exists
+if os.path.isfile('Controlfile'):
+    with open('Controlfile', 'r') as f:
+        try:
+            vars(options).update(json.load(f))
+        except json.decoder.JSONDecodeError as e:
+            err('Malformed Controlfile. Not valid JSON: {}'.format(str(e)))
+            sys.exit(2)
+else:
+    # TODO: When, eventually, you have to do parsing to override defaults and you move to configparser, change this to print conditionally
+    print('No Controlfile. Proceeding with defaults')
 
 if options.debug:
     print('options={}'.format(vars(options)))
