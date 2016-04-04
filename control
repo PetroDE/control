@@ -29,6 +29,7 @@ import base64
 import docker
 import json
 import os
+import sys
 import re
 import requests
 from requests.packages.urllib3.exceptions import InsecureRequestWarning
@@ -95,30 +96,55 @@ class Registry:
             if r.status_code == 401:
                 print('You are not logged into registry {}\nRun docker login'.format(self.endpoint))
                 if options.pull:
-                    exit(3)
+                    sys.exit(3)
+            elif not r.status_code in [200, 404]:
+                print('{} {}'.format(r.status_code, r.text))
+                if options.pull:
+                    sys.exit(3)
         except requests.exceptions.SSLError as e:
             if not options.no_verify:
                 err('Cannot verify that you are connecting to the registry you think you are')
-                exit(3)
+                sys.exit(3)
         except requests.exceptions.ConnectionError as e:
             err('registry {reg} could not be contacted: {msg}'.format(reg=self.endpoint,
                 msg=e))
-            exit(3)
+            sys.exit(3)
 
     def get(self, uri):
         if self.use_cert:
             return self.session.get(uri, verify=self.certfile)
         return self.session.get(uri)
 
+    def get_info_of_repo(self, repo):
+        r = self.get('{base}/{image}/manifests/{tag}'.format(base=self.baseuri,
+            image=repo.image,
+            tag=repo.tag))
+        if r.status_code == 200:
+            return r.json()
+        return {}
+
     def get_id_of_repo(self, repo):
         r = self.get('{base}/{image}/manifests/{tag}'.format(base=self.baseuri,
             image=repo.image,
             tag=repo.tag))
         if r.status_code == 200:
-            log(r.text)
-        else:
-            log(r.status_code)
-            log(r.text)
+            return r.json()['fsLayers'][0]['blobSum']
+        return ''
+
+    def get_build_date_of_repo(self, repo):
+        r = self.get('{base}/{image}/manifests/{tag}'.format(base=self.baseuri,
+            image=repo.image,
+            tag=repo.tag))
+        if r.status_code == 200:
+            return json.loads(r.json()['history'][0]['v1Compatibility'])['created']
+        return ''
+
+    def get_tags_of_image(self, image):
+        r = self.get('{base}/{image}/tags/list').format(base=self.baseuri,
+                image=image)
+        if r.status_code == 200:
+            return r.json()['tags']
+        return []
 
 class Repository:
     #This matches more than is valid, but not less than is valid. Notably,
@@ -165,31 +191,15 @@ def image_is_newer(base):
     log('is_image_newer', level='debug')
     if base.image == 'scratch':
         err('Control does not handle building FROM scratch yet')
-        exit(1)
+        sys.exit(1)
     elif not base.registry:
         return True #Giving up on any kind of intelligence in dealing with the Hub.
 
     log('Contacting registry at {}'.format(base.registry), level='debug')
     reg = Registry(base.domain, base.port)
-    reg.get_id_of_repo(base)
-    #TODO: Need to log into registries
-    #try:
-    #    if os.path.isdir('/etc/docker/certs.d/{}'.format(base.registry)):
-    #        r = requests.get(
-    #                'https://{registry}/v2/{image}/manifests/{tag}'.format(registry=base.registry,
-    #                    image=base.image,
-    #                    tag=base.tag),
-    #                verify='/etc/docker/certs.d/{registry}/ca.crt'.format(registry=base.registry))
-    #    else:
-    #        log('road less taken', level='debug')
-    #        r = requests.get(
-    #                'https://{registry}/v2/{image}/manifests/{tag}'.format(registry=base.registry,
-    #                    image=base.image,
-    #                    tag=base.tag))
-    #    log(r.json())
-    #except requests.exceptions.SSLError as e:
-    #    err(e)
-    exit(-1)
+    log(reg.get_build_date_of_repo(base))
+    #log(json.dumps(reg.get_info_of_repo(base), sort_keys=True, indent=4, separators=(',', ': ')))
+    sys.exit(-1)
 
 def pulling(repo):
     """We make use of the difference between None and False, so explicit
@@ -218,7 +228,7 @@ def build(args):
         print('running docker build')
     if not hasattr(args, 'image') or not args.image:
         err('No image name was specified. Edit your Controlfile or specify with -i')
-        exit(3)
+        sys.exit(3)
     if os.path.isfile(args.dockerfile):
         with open(args.dockerfile, 'r') as f:
             for line in f:
@@ -227,7 +237,7 @@ def build(args):
                     break
     else:
         err('Dockerfile does not exist')
-        exit(3)
+        sys.exit(3)
     if pulling(upstream) and image_is_newer(upstream):
         pass
     if not args.dry_run:
@@ -248,7 +258,7 @@ def build_prod(args):
         print('running docker build')
     if not hasattr(args, 'image') or not args.image:
         err('No image name was specified. Edit your Controlfile or specify with -i')
-        exit(3)
+        sys.exit(3)
     if not args.dry_run:
         for line in (json.loads(l.decode('utf-8').strip()) for l in docker.build(path='.',
                 tag=args.image,
@@ -282,7 +292,7 @@ if os.path.isfile('Controlfile'):
             vars(options).update(json.load(f))
         except json.decoder.JSONDecodeError as e:
             err('Malformed Controlfile. Not valid JSON: {}'.format(str(e)))
-            exit(2)
+            sys.exit(2)
 else:
     # TODO: When, eventually, you have to do parsing to override defaults and you move to configparser, change this to print conditionally
     print('No Controlfile. Proceeding with defaults')
@@ -328,8 +338,8 @@ if os.path.exists('/var/run/docker.sock'):
     docker = docker.Client(base_url='unix://var/run/docker.sock')
 else:
     err('docker daemon not started')
-    exit(2)
+    sys.exit(2)
 
 ret = options.func(options)
 if not ret:
-    exit(1)
+    sys.exit(1)
