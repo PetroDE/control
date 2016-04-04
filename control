@@ -26,13 +26,14 @@
 import argparse
 #import configparser
 import base64
-import docker
+import docker as Docker
 import json
 import os
 import sys
 import re
 import requests
 from requests.packages.urllib3.exceptions import InsecureRequestWarning
+import dateutil.parser as dup
 import sys
 
 # Shut up requests because the user has to make a conscious choice to be
@@ -116,6 +117,7 @@ class Registry:
         return self.session.get(uri)
 
     def get_info_of_repo(self, repo):
+        #log(json.dumps(reg.get_info_of_repo(base), sort_keys=True, indent=4, separators=(',', ': ')))
         r = self.get('{base}/{image}/manifests/{tag}'.format(base=self.baseuri,
             image=repo.image,
             tag=repo.tag))
@@ -165,18 +167,15 @@ class Repository:
         self.tag = tag
         if domain and port:
             self.registry = '{}:{}'.format(self.domain, self.port)
-            self.repo = '{}:{}/{}:{}'.format(self.domain,
-                    self.port,
-                    self.image,
-                    self.port)
         elif domain:
-            self.registry = '{}'.format(self.domain)
-            self.repo = '{}/{}:{}'.format(self.domain,
-                    self.image,
-                    self.port)
+            self.registry = self.domain
         else:
             self.registry = False
-            self.repo = '{}:{}'.format(self.image, self.port)
+
+        if self.registry:
+            self.repo = '{}/{}:{}'.format(self.registry, self.image, self.tag)
+        else:
+            self.repo = '{}:{}'.format(self.image, self.tag)
 
     @classmethod
     def match(cls, text):
@@ -197,9 +196,17 @@ def image_is_newer(base):
 
     log('Contacting registry at {}'.format(base.registry), level='debug')
     reg = Registry(base.domain, base.port)
-    log(reg.get_build_date_of_repo(base))
-    #log(json.dumps(reg.get_info_of_repo(base), sort_keys=True, indent=4, separators=(',', ': ')))
-    sys.exit(-1)
+    try:
+        remote_date = dup.parse(reg.get_build_date_of_repo(base))
+    except ValueError as e:
+        log('Image does not exist in registry', level='warn')
+        return False
+    try:
+        local_date = dup.parse(docker.inspect_image(base.repo)['Created'])
+    except Docker.errors.NotFound as e:
+        log('Image does not exist locally', level='warn')
+        return True
+    return remote_date > local_date
 
 def pulling(repo):
     """We make use of the difference between None and False, so explicit
@@ -239,12 +246,16 @@ def build(args):
         err('Dockerfile does not exist')
         sys.exit(3)
     if pulling(upstream) and image_is_newer(upstream):
-        pass
+        for line in (json.loads(l.decode('utf-8').strip()) for l in docker.pull(stream=True,
+                repository='{}/{}'.format(upstream.registry, upstream.image),
+                tag=upstream.tag)):
+            print_formatted(line)
     if not args.dry_run:
         for line in (json.loads(l.decode('utf-8').strip()) for l in docker.build(path='.',
                 tag=args.image,
                 nocache=args.no_cache,
                 rm=args.no_rm,
+                pull=False,
                 dockerfile=args.dockerfile)):
             print_formatted(line)
             if 'error' in line.keys():
@@ -332,10 +343,10 @@ parser.parse_args(namespace=options)
 if options.debug:
     print('options={}'.format(vars(options)))
 
-# docker.Client doesn't raise an exception. They just crash the program. This
+# Docker.Client doesn't raise an exception. They just crash the program. This
 # is the most graceful way I can save this.
 if os.path.exists('/var/run/docker.sock'):
-    docker = docker.Client(base_url='unix://var/run/docker.sock')
+    docker = Docker.Client(base_url='unix://var/run/docker.sock')
 else:
     err('docker daemon not started')
     sys.exit(2)
