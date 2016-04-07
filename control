@@ -9,13 +9,15 @@
 #
 # We really don't expect much of it. /s
 #
+# Control is a general use build tool. But, it is a developer specific container
+# support tool. Control should not be used to start images in production.
+#
 # Exit codes:
 # 1 - Control operation failed, check output
 # 2 - Something failed early (Docker daemon not started, malformed Controlfile)
 # 3 - Operation pre-check failed
 
 # Things that are needed:
-#   - Add handling for --pull --no-pull and default behavior
 #   - Clearly defined global options when ./control is run
 #   - Clearly defined options when ./control build is run
 #   - Override global defaults with Controlfile
@@ -286,6 +288,28 @@ def build_prod(args):
             f.write('{}\n'.format(args.image))
     return True
 
+def start(args):
+    print('starting container')
+    #TODO: parse {collective} out of options in the controlfile
+    if options.name:
+        options.container['name'] = options.name
+    if options.no_volumes:
+        options.container['volumes'] = []
+
+    try:
+        running = docker.inspect_container(options.container['name'])
+    except Docker.errors.NotFound:
+        log('Container is not already created', level='debug')
+        #check if running is out of date
+            #restart if true
+            #return
+    container = docker.create_container(image=options.image,
+            name=options.container['name'],
+            hostname=options.container['hostname'],
+            detach=options.container['detach'],
+            volumes=options.container['volumes'])
+    docker.start(container['Id'])
+
 # Handle global defaults here
 options = argparse.Namespace()
 opts = vars(options)
@@ -326,6 +350,11 @@ buildprod_parser.add_argument('-i', '--image', default=options.image, help='over
 buildprod_parser.add_argument('--no-cache', default=True, action='store_true', help='allow the build to use the cache')
 buildprod_parser.add_argument('--no-pull', action='store_const', const=False, dest='pull', help='do not pull newer versions of the base image')
 buildprod_parser.set_defaults(func=build_prod)
+
+start_parser = subparsers.add_parser('start', description='start a container using an image')
+start_parser.add_argument('-n', '--name', help='the name to give to the container')
+start_parser.add_argument('--no-volumes', action='store_true', help='override the volumes mentioned in the Controlfile')
+start_parser.set_defaults(func=start)
 parser.parse_args(namespace=options)
 
 # Read in a Controlfile if one exists
