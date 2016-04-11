@@ -28,14 +28,14 @@
 import argparse
 #import configparser
 import base64
+import dateutil.parser as dup
 import docker as Docker
 import json
 import os
-import sys
 import re
 import requests
 from requests.packages.urllib3.exceptions import InsecureRequestWarning
-import dateutil.parser as dup
+import shutil
 import sys
 
 # Shut up requests because the user has to make a conscious choice to be
@@ -215,9 +215,24 @@ def pulling(repo):
     checking against False or True is necessary."""
     if options.pull == False:
         return False
-    elif options.func.__name__ == 'build' and not repo.registry and not options.pull:
+    elif options.func.__name__ in ['default', 'build'] and not repo.registry and not options.pull:
         return False
     return True
+
+def container_is_running(container):
+    try:
+        return docker.inspect_container(container)['State']['Running']
+    except Docker.errors.NotFound as e:
+        return False
+    return False
+
+def container_exists(container):
+    try:
+        docker.inspect_container(container)
+        return True
+    except Docker.errors.NotFound as e:
+        return False
+    return False
 
 def print_formatted(line):
     if options.debug:
@@ -248,8 +263,9 @@ def build(args):
         err('Dockerfile does not exist')
         sys.exit(3)
     if pulling(upstream) and image_is_newer(upstream):
+        log('pulling upstream', level='debug')
         for line in (json.loads(l.decode('utf-8').strip()) for l in docker.pull(stream=True,
-                repository='{}/{}'.format(upstream.registry, upstream.image),
+                repository=upstream.repo,
                 tag=upstream.tag)):
             print_formatted(line)
     if not args.dry_run:
@@ -290,12 +306,14 @@ def build_prod(args):
 
 def start(args):
     print('starting container')
+    #TODO: normalize all the options
     #TODO: parse {collective} out of options in the controlfile
     if options.name:
         options.container['name'] = options.name
     if options.no_volumes:
         options.container['volumes'] = []
 
+    # check if image is newer, start again if image is newer
     try:
         running = docker.inspect_container(options.container['name'])
     except Docker.errors.NotFound:
@@ -307,14 +325,59 @@ def start(args):
             name=options.container['name'],
             hostname=options.container['hostname'],
             detach=options.container['detach'],
-            volumes=options.container['volumes'])
+            volumes=list(map(lambda x: x.split(':')[:2][-1], options.container['volumes'])),
+            host_config=docker.create_host_config(list(
+                filter(lambda x: ':' in x, options.container['volumes']))))
     docker.start(container['Id'])
+
+def stop(args):
+    volumes = []
+    if container_is_running(options.container['name']):
+        volumes = docker.inspect_container(options.container['name'])['Mounts']
+        if options.force:
+            docker.kill(options.container['name'])
+        else:
+            docker.stop(options.container['name'])
+    else:
+        log('{} is not running'.format(options.container['name']), level='debug')
+    if container_exists(options.container['name']):
+        docker.remove_container(options.container['name'], v=True)
+    if options.wipe:
+        if options.debug:
+            log('Attempting to remove these volume locations:', level='debug')
+            for v in (v['Source'] for v in volumes if os.path.isdir(v['Source'])):
+                log('    {}'.format(v), level='debug')
+        for vol in volumes:
+            if os.path.isdir(vol['Source']):
+                log('removing {}'.format(vol['Source']), level='debug')
+                try:
+                    shutil.rmtree(vol['Source'])
+                except PermissionError as e:
+                    print('Cannot remove directory {}: {}'.format(vol['Source'], e))
+                    sys.exit(1)
+            else:
+                log('docker removed volume {}'.format(vol['Source']), level='debug')
+    elif options.force:
+        print("'{}' does not exist. Cannot stop".format(options.container['name']))
+        return False
+    return True
+
+def restart(args):
+    if not stop(args):
+        return False
+    return start(args)
+
+def default(args):
+    build(args)
+    if hasattr(args, 'container') and options.container['name']:
+        start(args)
 
 # Handle global defaults here
 options = argparse.Namespace()
 opts = vars(options)
 opts['image'] = None
 opts['dockerfile'] = 'Dockerfile'
+opts['name'] = None
 opts['no_cache'] = False
 opts['no_rm'] = True
 opts['pull'] = None
@@ -326,8 +389,14 @@ parser = argparse.ArgumentParser(description='Control the building and running o
 parser.add_argument('-d', '--debug', action='store_true', help='print debug information helpful to developing the control script. This probably won\'t be useful to using the script, consider -v')
 parser.add_argument('-f', '--force', action='store_true', help='be forceful in all things')
 parser.add_argument('-n', '--dry-run', action='store_true', help='Pretend to execute actions, but only log that they happened')
+parser.add_argument('-i', '--image', default=options.image, help='override the tagged name of the image being built')
+parser.add_argument('--dockerfile', default=options.dockerfile, help='override the dockerfile used to build the image')
+parser.add_argument('--no-cache', action='store_true', help='do not use the cache')
+parser.add_argument('--pull', action='store_const', const=True, dest='pull', help='pull the image from upstream')
+parser.add_argument('--no-pull', action='store_const', const=False, dest='pull', help='do not pull newer versions of the base image')
+parser.add_argument('--no-volumes', action='store_true', help='override the volumes mentioned in the Controlfile')
 parser.add_argument('-V', '--version', action='version', version='%(prog)s v{}'.format(options.version))
-parser.set_defaults(func=build)
+parser.set_defaults(func=default)
 subparsers = parser.add_subparsers()
 
 # TODO: add child parsers that handle the individual actions
@@ -355,7 +424,20 @@ start_parser = subparsers.add_parser('start', description='start a container usi
 start_parser.add_argument('-n', '--name', help='the name to give to the container')
 start_parser.add_argument('--no-volumes', action='store_true', help='override the volumes mentioned in the Controlfile')
 start_parser.set_defaults(func=start)
+
+stop_parser = subparsers.add_parser('stop', description='stop a container')
+stop_parser.add_argument('-f', '--force', action='store_true', help='Do not wait for the container to gracefully shut down')
+stop_parser.add_argument('-w', '--wipe', action='store_true', help='Make sure that volumes are empty after stopping. May require sudo. THIS IS EXTREMELY DANGEROUS')
+stop_parser.set_defaults(func=stop)
+
+restart_parser = subparsers.add_parser('restart', description='remove a container, and start it up again')
+restart_parser.add_argument('-f', '--force', action='store_true', help='Do not wait for the container to gracefully shut down')
+restart_parser.add_argument('-n', '--name', help='the name to give to the container')
+restart_parser.add_argument('-w', '--wipe', action='store_true', help='Make sure that volumes are empty after stopping. May require sudo. THIS IS EXTREMELY DANGEROUS')
+restart_parser.add_argument('--no-volumes', action='store_true', help='override the volumes mentioned in the Controlfile')
+restart_parser.set_defaults(func=restart)
 parser.parse_args(namespace=options)
+
 
 # Read in a Controlfile if one exists
 if os.path.isfile('Controlfile'):
