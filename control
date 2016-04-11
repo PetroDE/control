@@ -287,7 +287,9 @@ def image_is_newer(base):
 
 def pulling(repo):
     """We make use of the difference between None and False, so explicit
-    checking against False or True is necessary."""
+    checking against False or True is necessary.
+    """
+
     if options.pull == False:
         return False
     elif options.func.__name__ in ['default', 'build'] and not repo.registry and not options.pull:
