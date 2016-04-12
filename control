@@ -382,7 +382,6 @@ def build_prod(args):
     return True
 
 def start(args):
-    print('starting container')
     #TODO: normalize all the options
     #TODO: parse {collective} out of options in the controlfile
     if options.name:
@@ -398,6 +397,7 @@ def start(args):
         #check if running is out of date
             #restart if true
             #return
+    print('Starting {}'.format(options.container['name']))
     container = docker.create_container(image=options.image,
             name=options.container['name'],
             hostname=options.container['hostname'],
@@ -412,13 +412,19 @@ def stop(args):
     if container_is_running(options.container['name']):
         volumes = docker.inspect_container(options.container['name'])['Mounts']
         if options.force:
+            print('Killing {}'.format(options.container['name']))
             docker.kill(options.container['name'])
         else:
+            print('Stopping {}'.format(options.container['name']))
             docker.stop(options.container['name'])
     else:
         log('{} is not running'.format(options.container['name']), level='debug')
     if container_exists(options.container['name']):
+        print('Removing {}'.format(options.container['name']))
         docker.remove_container(options.container['name'], v=True)
+    elif options.force:
+        print("'{}' does not exist. Cannot stop".format(options.container['name']))
+        return False
     if options.wipe:
         if options.debug:
             log('Attempting to remove these volume locations:', level='debug')
@@ -434,9 +440,6 @@ def stop(args):
                     sys.exit(1)
             else:
                 log('docker removed volume {}'.format(vol['Source']), level='debug')
-    elif options.force:
-        print("'{}' does not exist. Cannot stop".format(options.container['name']))
-        return False
     return True
 
 def restart(args):
@@ -467,6 +470,7 @@ parser.add_argument('-d', '--debug', action='store_true', help='print debug info
 parser.add_argument('-f', '--force', action='store_true', help='be forceful in all things')
 parser.add_argument('-n', '--dry-run', action='store_true', help='Pretend to execute actions, but only log that they happened')
 parser.add_argument('-i', '--image', default=options.image, help='override the tagged name of the image being built')
+parser.add_argument('--name', help='the name to give to the container')
 parser.add_argument('--dockerfile', default=options.dockerfile, help='override the dockerfile used to build the image')
 parser.add_argument('--no-cache', action='store_true', help='do not use the cache')
 parser.add_argument('--pull', action='store_const', const=True, dest='pull', help='pull the image from upstream')
