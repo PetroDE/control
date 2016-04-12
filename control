@@ -402,17 +402,20 @@ def start(args):
         container = docker.create_container(image=options.image,
                 name=options.container['name'],
                 hostname=options.container['hostname'],
-                detach=options.container['detach'],
-                host_config=docker.create_host_config(list(
-                    filter(lambda x: ':' in x, options.container['volumes']))))
+                host_config=docker.create_host_config(options.container['volumes']))
         docker.start(container['Id'])
     except Docker.errors.NotFound as e:
         if 'chown' in str(e):
             err('Docker is having trouble creating a volume. Try looking at docker volume ls or try restarting the docker daemon.')
             err(e)
-            exit(1)
+            sys.exit(1)
+        elif 'volume not found' in str(e):
+            err('You cannot create transient volumes in the Controlfile. Name your volume, or bind it to the host')
+            err(e)
+            sys.exit(1)
         else:
             raise e
+
 
 def stop(args):
     volumes = []
