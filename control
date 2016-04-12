@@ -408,7 +408,7 @@ def start(args):
         docker.start(container['Id'])
     except Docker.errors.NotFound as e:
         if 'chown' in str(e):
-            err('Docker is having trouble creating a volume. Try restarting the Docker daemon.')
+            err('Docker is having trouble creating a volume. Try looking at docker volume ls or try restarting the docker daemon.')
             err(e)
             exit(1)
         else:
