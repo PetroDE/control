@@ -398,14 +398,21 @@ def start(args):
             #restart if true
             #return
     print('Starting {}'.format(options.container['name']))
-    container = docker.create_container(image=options.image,
-            name=options.container['name'],
-            hostname=options.container['hostname'],
-            detach=options.container['detach'],
-            volumes=list(map(lambda x: x.split(':')[:2][-1], options.container['volumes'])),
-            host_config=docker.create_host_config(list(
-                filter(lambda x: ':' in x, options.container['volumes']))))
-    docker.start(container['Id'])
+    try:
+        container = docker.create_container(image=options.image,
+                name=options.container['name'],
+                hostname=options.container['hostname'],
+                detach=options.container['detach'],
+                host_config=docker.create_host_config(list(
+                    filter(lambda x: ':' in x, options.container['volumes']))))
+        docker.start(container['Id'])
+    except Docker.errors.NotFound as e:
+        if 'chown' in str(e):
+            err('Docker is having trouble creating a volume. Try restarting the Docker daemon.')
+            err(e)
+            exit(1)
+        else:
+            raise e
 
 def stop(args):
     volumes = []
