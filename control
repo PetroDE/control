@@ -262,6 +262,85 @@ class Repository:
                 image=m.group('image'),
                 tag=m.group('tag'))
 
+class Container:
+    """
+    Container is a data structure for a container. Controlfiles that specify
+    containers will be read into this structure and have defaults applied where
+    a default has not been explicitly overriden.
+    """
+
+    expected_timeout = 10
+    conf = {
+            'name': '',
+            'image': '',
+            'hostname': None,
+            }
+
+    class ContainerException(Exception):
+        pass
+    class DoesNotExist(ContainerException):
+        """A much more useful error than docker-py's standard 404 message"""
+        def __init__(self, name):
+            self.name = name
+        def __str__(self):
+            return 'Container does not exist: {}'.format(self.name)
+    class VolumePseudoExists(ContainerException):
+        """Volumes were probably manually removed, but Docker caches volume's existence"""
+        def __init__(self, msg):
+            self.msg = msg
+        def __str__(self):
+            return '''Docker is having trouble creating a volume. Try looking '''
+            '''at docker volume ls or try restarting the docker daemon.'''
+    class TransientVolumeCreation(ContainerException):
+        def __init__(self, msg):
+            self.msg = msg
+        def __str__(self):
+            return '''You cannot create transient volumes in the Controlfile.'''
+            '''Name your volume, or bind it to the host'''
+    class NotRunning(ContainerException):
+        pass
+
+    def __init__(self, image, conf):
+        try:
+            self.expected_timeout = conf.pop('expected_timeout')
+        except KeyError:
+            pass
+        self.conf.update(conf)
+        self.conf['image'] = image
+
+    def __get_container_options(self):
+        conf_copy = self.conf.copy()
+        host_config = {}
+        try:
+            host_config['binds'] = conf_copy.pop('volumes')
+        except KeyError:
+            pass
+        # This calling create_host_config probably doesn't change the dict
+        conf_copy['host_config'] = host_config
+        return conf_copy
+
+    def create(self):
+        print(self.conf)
+        try:
+            return CreatedContainer(
+                    docker.create_container(**self.__get_container_options()), self.conf)
+        except Docker.errors.NotFound as e:
+            if 'chown' in str(e):
+                raise Container.VolumePseudoExists(e)
+            elif 'volume not found' in str(e):
+                raise Container.TransientVolumeCreation(e)
+
+class CreatedContainer(Container):
+    inspect = {}
+
+    def __init__(self, name, conf={}):
+        try:
+            self.inspect = docker.inspect_container(name)
+            super().__init__(self.inspect['Image'], conf)
+        except Docker.errors.NotFound as e:
+            log(e, level='debug')
+            raise Container.DoesNotExist(name)
+
 # TODO: finish
 def image_is_newer(base):
     log('is_image_newer', level='debug')
@@ -388,34 +467,25 @@ def start(args):
         options.container['name'] = options.name
     if options.no_volumes:
         options.container['volumes'] = []
+    container = Container(options.image, options.container)
 
     # check if image is newer, start again if image is newer
     try:
-        running = docker.inspect_container(options.container['name'])
-    except Docker.errors.NotFound:
-        log('Container is not already created', level='debug')
-        #check if running is out of date
-            #restart if true
-            #return
+        container = CreatedContainer(options.container['name'], options.container)
+    except Container.DoesNotExist:
+        pass #This will probably be the majority case
     print('Starting {}'.format(options.container['name']))
     try:
-        container = docker.create_container(image=options.image,
-                name=options.container['name'],
-                hostname=options.container['hostname'],
-                host_config=docker.create_host_config(options.container['volumes']))
-        docker.start(container['Id'])
-    except Docker.errors.NotFound as e:
-        if 'chown' in str(e):
-            err('Docker is having trouble creating a volume. Try looking at docker volume ls or try restarting the docker daemon.')
-            err(e)
-            sys.exit(1)
-        elif 'volume not found' in str(e):
-            err('You cannot create transient volumes in the Controlfile. Name your volume, or bind it to the host')
-            err(e)
-            sys.exit(1)
-        else:
-            raise e
-
+        container = container.create()
+        #container = docker.create_container(image=options.image,
+        #        name=options.container['name'],
+        #        hostname=options.container['hostname'],
+        #        host_config=docker.create_host_config(binds=options.container['volumes']))
+        #TODO: start container after creation
+        #docker.start(container['Id'])
+    except Container.ContainerException as e:
+        err(e)
+        exit(1)
 
 def stop(args):
     volumes = []
