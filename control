@@ -278,6 +278,11 @@ class Container:
 
     class ContainerException(Exception):
         pass
+    class AlreadyExists(ContainerException):
+        def __init__(self, msg):
+            self.msg = msg
+        def __str__(self):
+            return '''Container already exists: {}'''.format(self.msg)
     class DoesNotExist(ContainerException):
         """A much more useful error than docker-py's standard 404 message"""
         def __init__(self, name):
@@ -316,19 +321,24 @@ class Container:
         except KeyError:
             pass
         # This calling create_host_config probably doesn't change the dict
-        conf_copy['host_config'] = host_config
+        conf_copy['host_config'] = docker.create_host_config(**host_config)
         return conf_copy
 
     def create(self):
         print(self.conf)
         try:
             return CreatedContainer(
-                    docker.create_container(**self.__get_container_options()), self.conf)
+                    docker.create_container(**self.__get_container_options()),
+                    self.conf)
         except Docker.errors.NotFound as e:
             if 'chown' in str(e):
-                raise Container.VolumePseudoExists(e)
+                raise Container.VolumePseudoExists(e.explanation.decode('utf-8'))
             elif 'volume not found' in str(e):
-                raise Container.TransientVolumeCreation(e)
+                raise Container.TransientVolumeCreation(e.explanation.decode('utf-8'))
+            else:
+                raise e
+        except Docker.errors.APIError as e:
+            raise Container.AlreadyExists(e.explanation.decode('utf-8'))
 
 class CreatedContainer(Container):
     inspect = {}
@@ -340,6 +350,11 @@ class CreatedContainer(Container):
         except Docker.errors.NotFound as e:
             log(e, level='debug')
             raise Container.DoesNotExist(name)
+
+    def start(self):
+        docker.start(self.inspect['Id'])
+        self.inspect = docker.inspect_container(self.inspect['Id'])
+        return self.inspect['State']['Running']
 
 # TODO: finish
 def image_is_newer(base):
@@ -477,12 +492,7 @@ def start(args):
     print('Starting {}'.format(options.container['name']))
     try:
         container = container.create()
-        #container = docker.create_container(image=options.image,
-        #        name=options.container['name'],
-        #        hostname=options.container['hostname'],
-        #        host_config=docker.create_host_config(binds=options.container['volumes']))
-        #TODO: start container after creation
-        #docker.start(container['Id'])
+        container.start()
     except Container.ContainerException as e:
         err(e)
         exit(1)
@@ -583,6 +593,7 @@ buildprod_parser.set_defaults(func=build_prod)
 
 start_parser = subparsers.add_parser('start', description='start a container using an image')
 start_parser.add_argument('-n', '--name', help='the name to give to the container')
+start_parser.add_argument('-i', '--image', help='override the tagged name of the image being built')
 start_parser.add_argument('--no-volumes', action='store_true', help='override the volumes mentioned in the Controlfile')
 start_parser.set_defaults(func=start)
 
