@@ -22,6 +22,7 @@
 #   - Clearly defined options when ./control build is run
 #   - Override global defaults with Controlfile
 #   - Override Controlfile settings with CLI arguments
+#   - Note that docker 1.9 needs docker-py 1.7.x and docker 1.10 needs docker-py 1.8
 #
 # TODO: handle ^C without printing a stack trace, like normal people MOM!
 
@@ -91,7 +92,7 @@ class Registry:
                             j['auths']['https://{}'.format(self.endpoint)]['auth']
                             ).decode('utf-8').split(':'))
                     log('setting basicauth', level='debug')
-                except json.decoder.JSONDecodeError as e:
+                except json.JSONDecodeError as e:
                     log('Docker config file not valid JSON: {}'.format(str(e)), level='warn')
                 except KeyError:
                     pass
@@ -325,7 +326,7 @@ class Container:
         return conf_copy
 
     def create(self):
-        print(self.conf)
+        log(self.conf, level='debug')
         try:
             return CreatedContainer(
                     docker.create_container(**self.__get_container_options()),
@@ -355,6 +356,48 @@ class CreatedContainer(Container):
         docker.start(self.inspect['Id'])
         self.inspect = docker.inspect_container(self.inspect['Id'])
         return self.inspect['State']['Running']
+
+    def stop(self):
+        docker.stop(self.inspect['Id'], timeout=self.expected_timeout)
+        self.inspect = docker.inspect_container(self.inspect['Id'])
+        return not self.inspect['State']['Running']
+
+    def kill(self):
+        docker.kill(self.inspect['Id'])
+        self.inspect = docker.inspect_container(self.inspect['Id'])
+        return not self.inspect['State']['Running']
+
+    def remove(self):
+        docker.remove_container(self.inspect['Id'], v=True)
+        try:
+            container = docker.inspect_container(self.inspect['Id'])
+            return False
+        except Docker.errors.NotFound:
+            return True
+
+    def remove_volumes(self):
+        if options.debug:
+            log('Docker has removed these volumes:', level='debug')
+            for v in (v['Source'] for v in self.inspect['Mounts'] if not os.path.isdir(v['Source'])):
+                log('  {}'.format(v), level='debug')
+            log('Attempting to remove these volume locations:', level='debug')
+            for v in (v['Source'] for v in self.inspect['Mounts'] if os.path.isdir(v['Source'])):
+                log('  {}'.format(v), level='debug')
+        for vol in self.inspect['Mounts']:
+            if vol['Source'].startswith('/var/lib/docker/volumes'):
+                log('having docker remove {}'.format(vol['Source']), level='debug')
+                try:
+                    docker.remove_volume(vol['Name'])
+                except Docker.errors.APIError as e:
+                    log('cannot remove volume: {}'.format(e.explanation.decode('utf-8'), level='info'))
+            elif os.path.isdir(vol['Source']):
+                log('removing {}'.format(vol['Source']), level='debug')
+                try:
+                    shutil.rmtree(vol['Source'])
+                except PermissionError as e:
+                    print('Cannot remove directory {}: {}'.format(vol['Source'], e))
+            else:
+                log('docker removed volume {}'.format(vol['Source']), level='debug')
 
 # TODO: finish
 def image_is_newer(base):
@@ -486,6 +529,9 @@ def start(args):
 
     # check if image is newer, start again if image is newer
     try:
+        #TODO: if a container exists but the options don't match, log out that
+        #we are starting a container that does not match the merged contralfile
+        #and cli options
         container = CreatedContainer(options.container['name'], options.container)
     except Container.DoesNotExist:
         pass #This will probably be the majority case
@@ -496,40 +542,27 @@ def start(args):
     except Container.ContainerException as e:
         err(e)
         exit(1)
+    return True
 
 def stop(args):
     volumes = []
-    if container_is_running(options.container['name']):
-        volumes = docker.inspect_container(options.container['name'])['Mounts']
+    try:
+        container = CreatedContainer(options.container['name'])
         if options.force:
             print('Killing {}'.format(options.container['name']))
-            docker.kill(options.container['name'])
+            container.kill()
         else:
             print('Stopping {}'.format(options.container['name']))
-            docker.stop(options.container['name'])
-    else:
-        log('{} is not running'.format(options.container['name']), level='debug')
-    if container_exists(options.container['name']):
+            container.stop()
         print('Removing {}'.format(options.container['name']))
-        docker.remove_container(options.container['name'], v=True)
-    elif options.force:
-        print("'{}' does not exist. Cannot stop".format(options.container['name']))
+        container.remove()
+        if options.wipe:
+            container.remove_volumes()
+    except Container.DoesNotExist:
+        print('{} does not exist.'.format(options.container['name']))
+    except Exception as e:
+        log('unexpected error: {}'.format(e), level='error')
         return False
-    if options.wipe:
-        if options.debug:
-            log('Attempting to remove these volume locations:', level='debug')
-            for v in (v['Source'] for v in volumes if os.path.isdir(v['Source'])):
-                log('    {}'.format(v), level='debug')
-        for vol in volumes:
-            if os.path.isdir(vol['Source']):
-                log('removing {}'.format(vol['Source']), level='debug')
-                try:
-                    shutil.rmtree(vol['Source'])
-                except PermissionError as e:
-                    print('Cannot remove directory {}: {}'.format(vol['Source'], e))
-                    sys.exit(1)
-            else:
-                log('docker removed volume {}'.format(vol['Source']), level='debug')
     return True
 
 def restart(args):
@@ -538,9 +571,12 @@ def restart(args):
     return start(args)
 
 def default(args):
-    build(args)
+    ret = build(args)
+    if not ret:
+        return ret
     if hasattr(args, 'container') and options.container['name']:
-        start(args)
+        return start(args)
+    return ret
 
 # Handle global defaults here
 options = argparse.Namespace()
@@ -597,7 +633,7 @@ start_parser.add_argument('-i', '--image', help='override the tagged name of the
 start_parser.add_argument('--no-volumes', action='store_true', help='override the volumes mentioned in the Controlfile')
 start_parser.set_defaults(func=start)
 
-stop_parser = subparsers.add_parser('stop', description='stop a container')
+stop_parser = subparsers.add_parser('stop', description='stop a container. This will inform docker to remove volumes that it can remove')
 stop_parser.add_argument('-f', '--force', action='store_true', help='Do not wait for the container to gracefully shut down')
 stop_parser.add_argument('-w', '--wipe', action='store_true', help='Make sure that volumes are empty after stopping. May require sudo. THIS IS EXTREMELY DANGEROUS')
 stop_parser.set_defaults(func=stop)
@@ -605,6 +641,7 @@ stop_parser.set_defaults(func=stop)
 restart_parser = subparsers.add_parser('restart', description='remove a container, and start it up again')
 restart_parser.add_argument('-f', '--force', action='store_true', help='Do not wait for the container to gracefully shut down')
 restart_parser.add_argument('-n', '--name', help='the name to give to the container')
+restart_parser.add_argument('-i', '--image', help='override the tagged name of the image being built')
 restart_parser.add_argument('-w', '--wipe', action='store_true', help='Make sure that volumes are empty after stopping. May require sudo. THIS IS EXTREMELY DANGEROUS')
 restart_parser.add_argument('--no-volumes', action='store_true', help='override the volumes mentioned in the Controlfile')
 restart_parser.set_defaults(func=restart)
