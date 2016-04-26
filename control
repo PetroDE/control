@@ -92,10 +92,10 @@ class Registry:
                             j['auths']['https://{}'.format(self.endpoint)]['auth']
                             ).decode('utf-8').split(':'))
                     log('setting basicauth', level='debug')
-                except json.JSONDecodeError as e:
-                    log('Docker config file not valid JSON: {}'.format(str(e)), level='warn')
                 except KeyError:
                     pass
+                except ValueError as e:
+                    log('Docker config file not valid JSON: {}'.format(str(e)), level='warn')
         if options.no_verify:
             self.certfile = False
             self.use_cert = True
