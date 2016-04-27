@@ -444,6 +444,8 @@ class CreatedContainer(Container):
                 try:
                     docker.remove_volume(vol['Name'])
                 except Docker.errors.APIError as e:
+                    if 'no such volume' in e.explanation.decode('utf-8'):
+                        continue
                     log('cannot remove volume: {}'.format(e.explanation.decode('utf-8'), level='info'))
             elif os.path.isdir(vol['Source']):
                 log('removing {}'.format(vol['Source']), level='debug')
@@ -585,7 +587,7 @@ def start(args):
     # check if image is newer, start again if image is newer
     try:
         #TODO: if a container exists but the options don't match, log out that
-        #we are starting a container that does not match the merged contralfile
+        #we are starting a container that does not match the merged controlfile
         #and cli options
         container = CreatedContainer(options.container['name'], options.container)
     except Container.DoesNotExist:
