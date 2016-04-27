@@ -101,18 +101,21 @@ class Registry:
             self.use_cert = True
         elif os.path.isdir(certdir):
             for certfile in map(lambda x: '{}/{}'.format(certdir, x), os.listdir(certdir)):
+                log('trying certfile {}'.format(certfile), level='debug')
                 try:
-                    log('trying certfile {}'.format(certfile), level='debug')
                     r = self.session.get(
-                            'https://{}/v0'.format(self.endpoint),
+                            'https://{}/'.format(self.endpoint),
                             verify=certfile)
-                except requests.exceptions.SSLError as e:
-                    log('Cert file rejected {}'.format(certfile), level='debug')
-                    continue
-                log('Setting verify', level='debug')
-                self.certfile = certfile
-                self.use_cert = True
-                break
+                except (requests.exceptions.SSLError, OSError) as e:
+                    log('Cert file rejected {}: {}'.format(certfile, e), level='debug')
+                except:
+                    log('Unexpected exception: '.format(sys.exc_info()[0]))
+                    raise
+                else:
+                    log('Setting verify', level='debug')
+                    self.certfile = certfile
+                    self.use_cert = True
+                    break
         try:
             r = self.get('https://{}/v0'.format(self.endpoint))
             if r.status_code == 401:
