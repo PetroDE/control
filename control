@@ -43,6 +43,35 @@ import sys
 # insecure
 requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 
+# Here's a snippet of code for when you have to call a docker function
+#
+# try:
+#     # Do something with docker
+# except Docker.errors.NotFound as e:
+#     if 'chown' in str(e):
+#         raise #A better error
+#     elif 'volume not found' in str(e):
+#         raise #A better error
+#     else:
+#         log('You found a new error condition in the Docker API!', level='debug')
+#         log(e, level='debug')
+#         log(e.response, level='debug')
+#         log(e.explanation.decode('utf-8'), level='debug')
+#         raise
+# except Docker.errors.APIError as e:
+#     if 'volume name invalid' in e.explanation.decode('utf-8'):
+#         raise #A better error
+#     elif 'is already in use by container' in e.explanation.decode('utf-8'):
+#         raise #A better error
+#     else:
+#         log('You found a new error condition in the Docker API!', level='debug')
+#         log(e, level='debug')
+#         log(e.response, level='debug')
+#         log(e.explanation.decode('utf-8'), level='debug')
+#         raise
+# else:
+#     #Magically we made it through
+
 def err(arg):
     log(arg, level='error')
 
@@ -281,7 +310,10 @@ class Container:
             }
 
     class ContainerException(Exception):
-        pass
+        def __init__(self, msg):
+            self.msg = msg
+        def __str__(self):
+            return self.msg
     class AlreadyExists(ContainerException):
         def __init__(self, msg):
             self.msg = msg
@@ -300,6 +332,11 @@ class Container:
         def __str__(self):
             return '''Docker is having trouble creating a volume. Try looking '''
             '''at docker volume ls or try restarting the docker daemon.'''
+    class InvalidVolumeName(ContainerException):
+        def __init__(self, msg):
+            self.msg = msg
+        def __str__(self):
+            return self.msg
     class TransientVolumeCreation(ContainerException):
         def __init__(self, msg):
             self.msg = msg
@@ -335,14 +372,23 @@ class Container:
                     docker.create_container(**self.__get_container_options()),
                     self.conf)
         except Docker.errors.NotFound as e:
-            if 'chown' in str(e):
+            if 'chown' in e.explanation.decode('utf-8'):
                 raise Container.VolumePseudoExists(e.explanation.decode('utf-8'))
-            elif 'volume not found' in str(e):
+            elif 'volume not found' in e.explanation.decode('utf-8'):
                 raise Container.TransientVolumeCreation(e.explanation.decode('utf-8'))
-            else:
-                raise e
+            log(e, level='debug')
+            log(e.response, level='debug')
+            log(e.explanation.decode('utf-8'), level='debug')
+            raise
         except Docker.errors.APIError as e:
-            raise Container.AlreadyExists(e.explanation.decode('utf-8'))
+            if 'volume name invalid' in e.explanation.decode('utf-8'):
+                raise Container.InvalidVolumeName(e.explanation.decode('utf-8'))
+            elif 'is already in use by container' in e.explanation.decode('utf-8'):
+                raise Container.AlreadyExists(e.explanation.decode('utf-8'))
+            log(e, level='debug')
+            log(e.response, level='debug')
+            log(e.explanation.decode('utf-8'), level='debug')
+            raise
 
 class CreatedContainer(Container):
     inspect = {}
@@ -356,8 +402,14 @@ class CreatedContainer(Container):
             raise Container.DoesNotExist(name)
 
     def start(self):
-        docker.start(self.inspect['Id'])
-        self.inspect = docker.inspect_container(self.inspect['Id'])
+        try:
+            docker.start(self.inspect['Id'])
+        except Docker.errors.NotFound as e:
+            if e.explanation.decode('utf-8') == 'get: volume not found':
+                raise Container.InvalidVolumeName('volume not found')
+            raise
+        else:
+            self.inspect = docker.inspect_container(self.inspect['Id'])
         return self.inspect['State']['Running']
 
     def stop(self):
@@ -543,6 +595,7 @@ def start(args):
         container = container.create()
         container.start()
     except Container.ContainerException as e:
+        log('outer start containerexception caught', level='debug')
         err(e)
         exit(1)
     return True
@@ -578,7 +631,7 @@ def default(args):
     if not ret:
         return ret
     if hasattr(args, 'container') and options.container['name']:
-        return start(args)
+        return restart(args)
     return ret
 
 # Handle global defaults here
@@ -605,6 +658,8 @@ parser.add_argument('--no-cache', action='store_true', help='do not use the cach
 parser.add_argument('--pull', action='store_const', const=True, dest='pull', help='pull the image from upstream')
 parser.add_argument('--no-pull', action='store_const', const=False, dest='pull', help='do not pull newer versions of the base image')
 parser.add_argument('--no-volumes', action='store_true', help='override the volumes mentioned in the Controlfile')
+parser.add_argument('--no-verify', action='store_true', help='do not check the validity of the registry\'s SSL cert')
+parser.add_argument('--wipe', action='store_true', help='Make sure that volumes are empty after stopping. May require sudo. THIS IS EXTREMELY DANGEROUS')
 parser.add_argument('-V', '--version', action='version', version='%(prog)s v{}'.format(options.version))
 parser.set_defaults(func=default)
 subparsers = parser.add_subparsers()
