@@ -645,7 +645,7 @@ opts['name'] = None
 opts['no_cache'] = False
 opts['no_rm'] = True
 opts['pull'] = None
-opts['version'] = '1.4'
+opts['version'] = '1.5'
 
 # If you set a value that has a default, set it up above, then you must
 # reference that default here, otherwise it will be clobbered
