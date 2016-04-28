@@ -30,20 +30,19 @@
 # TODO: handle ^C without printing a stack trace, like normal people MOM!
 
 import argparse
-#import configparser
 import base64
-import dateutil.parser as dup
-import docker as Docker
 import json
 import os
 import re
-import requests
-from requests.packages.urllib3.exceptions import InsecureRequestWarning
 import shutil
 import sys
+import requests
+import dateutil.parser as dup
+import docker as Docker
 
 # Shut up requests because the user has to make a conscious choice to be
 # insecure
+from requests.packages.urllib3.exceptions import InsecureRequestWarning
 requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 
 # Here's a snippet of code for when you have to call a docker function
@@ -75,8 +74,10 @@ requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 # else:
 #     #Magically we made it through
 
+
 def err(arg):
     log(arg, level='error')
+
 
 def log(arg, level='info'):
     if (level == 'info' or
@@ -84,6 +85,7 @@ def log(arg, level='info'):
             (level == 'warn' and options.debug) or
             (level == 'debug' and options.debug)):
         print('[{LEVEL:5s}] {ARG}'.format(LEVEL=level.upper(), ARG=arg), file=sys.stderr)
+
 
 class Registry:
     """Abstraction for communicating with a Docker V2 Registry.
@@ -117,31 +119,34 @@ class Registry:
         self.use_cert = False
         self.session = requests.Session()
         if os.path.isfile(os.path.expanduser('~/.docker/config.json')):
-            with open(os.path.expanduser('~/.docker/config.json')) as f:
+            with open(os.path.expanduser('~/.docker/config.json')) as docker_config_file:
                 try:
-                    j = json.load(f)
-                    self.session.auth = tuple(base64.b64decode(
-                            j['auths']['https://{}'.format(self.endpoint)]['auth']
-                            ).decode('utf-8').split(':'))
+                    j = json.load(docker_config_file)
+                    self.session.auth = tuple(
+                        base64.b64decode(
+                            j['auths']['https://{}'.format(self.endpoint)]['auth'])
+                        .decode('utf-8')
+                        .split(':'))
                     log('setting basicauth', level='debug')
                 except KeyError:
                     pass
                 except ValueError as e:
-                    log('Docker config file not valid JSON: {}'.format(str(e)), level='warn')
+                    log('Docker config file not valid JSON: {}'.format(e), level='warn')
         if options.no_verify:
             self.certfile = False
             self.use_cert = True
         elif os.path.isdir(certdir):
-            for certfile in map(lambda x: '{}/{}'.format(certdir, x), os.listdir(certdir)):
+            # for certfile in map(lambda x: '{}/{}'.format(certdir, x), os.listdir(certdir)):
+            for certfile in ('{}/{}'.format(certdir, x) for x in os.listdir(certdir)):
                 log('trying certfile {}'.format(certfile), level='debug')
                 try:
-                    r = self.session.get(
-                            'https://{}/'.format(self.endpoint),
-                            verify=certfile)
+                    self.session.get(
+                        'https://{}/'.format(self.endpoint),
+                        verify=certfile)
                 except (requests.exceptions.SSLError, OSError) as e:
                     log('Cert file rejected {}: {}'.format(certfile, e), level='debug')
                 except:
-                    log('Unexpected exception: '.format(sys.exc_info()[0]))
+                    log('Unexpected exception: {}'.format(sys.exc_info()[0]))
                     raise
                 else:
                     log('Setting verify', level='debug')
@@ -154,17 +159,17 @@ class Registry:
                 print('You are not logged into registry {}\nRun docker login'.format(self.endpoint))
                 if options.pull:
                     sys.exit(3)
-            elif not r.status_code in [200, 404]:
+            elif [200, 404] not in r.status_code:
                 print('{} {}'.format(r.status_code, r.text))
                 if options.pull:
                     sys.exit(3)
-        except requests.exceptions.SSLError as e:
+        except requests.exceptions.SSLError:
             if not options.no_verify:
-                #TODO: don't exit the script, throw an error
+                # TODO: don't exit the script, throw an error
                 err('Cannot verify that you are connecting to the registry you think you are')
                 sys.exit(3)
         except requests.exceptions.ConnectionError as e:
-            #TODO: pass through error
+            # TODO: pass through error
             err('registry {reg} could not be contacted: {msg}'.format(reg=self.endpoint,
                 msg=e))
             sys.exit(3)
@@ -183,32 +188,38 @@ class Registry:
     def get_info_of_repo(self, repo):
         """Return the json object of the specific repo (image and tag)"""
 
-        #log(json.dumps(reg.get_info_of_repo(base), sort_keys=True, indent=4, separators=(',', ': ')))
-        r = self.get('{base}/{image}/manifests/{tag}'.format(base=self.baseuri,
-            image=repo.image,
-            tag=repo.tag))
-        if r.status_code == 200:
-            return r.json()
+        # log(json.dumps(reg.get_info_of_repo(base), sort_keys=True, indent=4, separators=(',', ': ')))
+        response = self.get(
+            '{base}/{image}/manifests/{tag}'.format(
+                base=self.baseuri,
+                image=repo.image,
+                tag=repo.tag))
+        if response.status_code == 200:
+            return response.json()
         return {}
 
     def get_id_of_repo(self, repo):
         """Return the Image ID if the image exists, otherwise returns empty string"""
 
-        r = self.get('{base}/{image}/manifests/{tag}'.format(base=self.baseuri,
-            image=repo.image,
-            tag=repo.tag))
-        if r.status_code == 200:
-            return r.json()['fsLayers'][0]['blobSum']
+        response = self.get(
+            '{base}/{image}/manifests/{tag}'.format(
+                base=self.baseuri,
+                image=repo.image,
+                tag=repo.tag))
+        if response.status_code == 200:
+            return response.json()['fsLayers'][0]['blobSum']
         return ''
 
     def get_build_date_of_repo(self, repo):
         """Return the string image build date or empty string if doesn't exist"""
 
-        r = self.get('{base}/{image}/manifests/{tag}'.format(base=self.baseuri,
-            image=repo.image,
-            tag=repo.tag))
-        if r.status_code == 200:
-            return json.loads(r.json()['history'][0]['v1Compatibility'])['created']
+        response = self.get(
+            '{base}/{image}/manifests/{tag}'.format(
+                base=self.baseuri,
+                image=repo.image,
+                tag=repo.tag))
+        if response.status_code == 200:
+            return json.loads(response.json()['history'][0]['v1Compatibility'])['created']
         return ''
 
     def get_tags_of_image(self, image):
@@ -217,11 +228,14 @@ class Registry:
         This can take some time because of the way Docker structures this data
         """
 
-        r = self.get('{base}/{image}/tags/list').format(base=self.baseuri,
+        response = self.get(
+            '{base}/{image}/tags/list').format(
+                base=self.baseuri,
                 image=image)
-        if r.status_code == 200:
-            return r.json()['tags']
+        if response.status_code == 200:
+            return response.json()['tags']
         return []
+
 
 class Repository:
     """Container class for holding image repository information.
@@ -241,16 +255,16 @@ class Repository:
     have the combined string version of a repo.
     """
 
-    #This matches more than is valid, but not less than is valid. Notably,
+    # This matches more than is valid, but not less than is valid. Notably,
     #    * Slash in the registry portion
     #    * Adjacent periods are accepted
-    #But, you had an invalid repo name if you hit either of those.
+    # But, you had an invalid repo name if you hit either of those.
     matcher = re.compile(r'(?:'
-            r'(?P<domain>localhost|(?:[-_\w]+\.[-_\w]+)+|[-_\w]+(?=:))'
-            r'(?::(?P<port>\d{1,5}))?'
-            r'/)?'
-            r'(?P<image>[-_./\w]+)'
-            r'(?::(?P<tag>[-_.\w]+))?')
+                         r'(?P<domain>localhost|(?:[-_\w]+\.[-_\w]+)+|[-_\w]+(?=:))'
+                         r'(?::(?P<port>\d{1,5}))?'
+                         r'/)?'
+                         r'(?P<image>[-_./\w]+)'
+                         r'(?::(?P<tag>[-_.\w]+))?')
 
     def __init__(self, image, tag='latest', domain=None, port=None):
         """Builds a repository object.
@@ -275,7 +289,7 @@ class Repository:
         elif domain:
             self.registry = self.domain
         else:
-            self.registry = False
+            self.registry = ''
 
         if self.registry:
             self.repo = '{}/{}:{}'.format(self.registry, self.image, self.tag)
@@ -292,11 +306,12 @@ class Repository:
         Repository.match('docker.example.com/my-image')
         """
 
-        m = Repository.matcher.search(text)
-        return Repository(domain=m.group('domain'),
-                port=m.group('port'),
-                image=m.group('image'),
-                tag=m.group('tag'))
+        match = Repository.matcher.search(text)
+        return Repository(domain=match.group('domain'),
+                          port=match.group('port'),
+                          image=match.group('image'),
+                          tag=match.group('tag'))
+
 
 class Container:
     """
@@ -307,45 +322,59 @@ class Container:
 
     expected_timeout = 10
     conf = {
-            'name': '',
-            'image': '',
-            'hostname': None,
-            }
+        'name': '',
+        'image': '',
+        'hostname': None,
+    }
 
     class ContainerException(Exception):
         def __init__(self, msg):
             self.msg = msg
+
         def __str__(self):
             return self.msg
+
     class AlreadyExists(ContainerException):
         def __init__(self, msg):
             self.msg = msg
+
         def __str__(self):
             return '''Container already exists: {}'''.format(self.msg)
+
     class DoesNotExist(ContainerException):
         """A much more useful error than docker-py's standard 404 message"""
+
         def __init__(self, name):
             self.name = name
+
         def __str__(self):
             return 'Container does not exist: {}'.format(self.name)
+
     class VolumePseudoExists(ContainerException):
         """Volumes were probably manually removed, but Docker caches volume's existence"""
+
         def __init__(self, msg):
             self.msg = msg
+
         def __str__(self):
-            return '''Docker is having trouble creating a volume. Try looking '''
-            '''at docker volume ls or try restarting the docker daemon.'''
+            return '''Docker is having trouble creating a volume. Try looking
+            at docker volume ls or try restarting the docker daemon.'''
+
     class InvalidVolumeName(ContainerException):
         def __init__(self, msg):
             self.msg = msg
+
         def __str__(self):
             return self.msg
+
     class TransientVolumeCreation(ContainerException):
         def __init__(self, msg):
             self.msg = msg
+
         def __str__(self):
-            return '''You cannot create transient volumes in the Controlfile.'''
-            '''Name your volume, or bind it to the host'''
+            return '''You cannot create transient volumes in the Controlfile.
+            Name your volume, or bind it to the host'''
+
     class NotRunning(ContainerException):
         pass
 
@@ -372,8 +401,8 @@ class Container:
         log(self.conf, level='debug')
         try:
             return CreatedContainer(
-                    docker.create_container(**self.__get_container_options()),
-                    self.conf)
+                docker.create_container(**self.__get_container_options()),
+                self.conf)
         except Docker.errors.NotFound as e:
             if 'chown' in e.explanation.decode('utf-8'):
                 raise Container.VolumePseudoExists(e.explanation.decode('utf-8'))
@@ -392,6 +421,7 @@ class Container:
             log(e.response, level='debug')
             log(e.explanation.decode('utf-8'), level='debug')
             raise
+
 
 class CreatedContainer(Container):
     inspect = {}
@@ -428,7 +458,7 @@ class CreatedContainer(Container):
     def remove(self):
         docker.remove_container(self.inspect['Id'], v=True)
         try:
-            container = docker.inspect_container(self.inspect['Id'])
+            docker.inspect_container(self.inspect['Id'])
             return False
         except Docker.errors.NotFound:
             return True
@@ -459,54 +489,58 @@ class CreatedContainer(Container):
             else:
                 log('docker removed volume {}'.format(vol['Source']), level='debug')
 
-# TODO: finish
-def image_is_newer(base):
+
+def image_is_newer(base):  # TODO: finish
     log('is_image_newer', level='debug')
     if base.image == 'scratch':
         err('Control does not handle building FROM scratch yet')
         sys.exit(1)
     elif not base.registry:
-        return True #Giving up on any kind of intelligence in dealing with the Hub.
+        return True  # Giving up on any kind of intelligence in dealing with the Hub.
 
     log('Contacting registry at {}'.format(base.registry), level='debug')
     reg = Registry(base.domain, base.port)
     try:
         remote_date = dup.parse(reg.get_build_date_of_repo(base))
-    except ValueError as e:
+    except ValueError:
         log('Image does not exist in registry', level='warn')
         return False
     try:
         local_date = dup.parse(docker.inspect_image(base.repo)['Created'])
-    except Docker.errors.NotFound as e:
+    except Docker.errors.NotFound:
         log('Image does not exist locally', level='warn')
         return True
     return remote_date > local_date
+
 
 def pulling(repo):
     """We make use of the difference between None and False, so explicit
     checking against False or True is necessary.
     """
 
-    if options.pull == False:
+    if options.pull is False:  # We actually do need to check the difference of None and False
         return False
     elif options.func.__name__ in ['default', 'build'] and not repo.registry and not options.pull:
         return False
     return True
 
+
 def container_is_running(container):
     try:
         return docker.inspect_container(container)['State']['Running']
-    except Docker.errors.NotFound as e:
+    except Docker.errors.NotFound:
         return False
     return False
+
 
 def container_exists(container):
     try:
         docker.inspect_container(container)
         return True
-    except Docker.errors.NotFound as e:
+    except Docker.errors.NotFound:
         return False
     return False
+
 
 def print_formatted(line):
     if options.debug:
@@ -516,12 +550,12 @@ def print_formatted(line):
         return
     if 'error' in line.keys():
         print('\x1b[31m{}\x1b[0m'.format(line['error']))
-    if 'id' in line.keys() and (not 'progressDetail' in line.keys() or not line['progressDetail']):
+    if 'id' in line.keys() and (line.keys() not in 'progressDetail' or not line['progressDetail']):
         print('{}: {}'.format(line['id'], line['status']))
         return
 
-# TODO: DRY it up
-def build(args):
+
+def build(args):  # TODO: DRY it up
     if args.debug or args.dry_run:
         print('running docker build')
     if not hasattr(args, 'image') or not args.image:
@@ -539,23 +573,24 @@ def build(args):
     if pulling(upstream) and image_is_newer(upstream):
         log('pulling upstream', level='debug')
         for line in (json.loads(l.decode('utf-8').strip()) for l in docker.pull(stream=True,
-                repository=upstream.repo,
-                tag=upstream.tag)):
+                                                                                repository=upstream.repo,
+                                                                                tag=upstream.tag)):
             print_formatted(line)
     if not args.dry_run:
         for line in (json.loads(l.decode('utf-8').strip()) for l in docker.build(path='.',
-                tag=args.image,
-                nocache=args.no_cache,
-                rm=args.no_rm,
-                pull=False,
-                dockerfile=args.dockerfile)):
+                                                                                 tag=args.image,
+                                                                                 nocache=args.no_cache,
+                                                                                 rm=args.no_rm,
+                                                                                 pull=False,
+                                                                                 dockerfile=args.dockerfile)):
             print_formatted(line)
             if 'error' in line.keys():
                 return False
     return True
 
+
 def build_prod(args):
-    if args.pull == None:
+    if args.pull is None:
         args.pull = True
     if args.debug or args.dry_run:
         print('running docker build')
@@ -564,11 +599,11 @@ def build_prod(args):
         sys.exit(3)
     if not args.dry_run:
         for line in (json.loads(l.decode('utf-8').strip()) for l in docker.build(path='.',
-                tag=args.image,
-                nocache=args.no_cache,
-                rm=args.no_rm,
-                pull=args.pull,
-                dockerfile=args.dockerfile)):
+                                                                                 tag=args.image,
+                                                                                 nocache=args.no_cache,
+                                                                                 rm=args.no_rm,
+                                                                                 pull=args.pull,
+                                                                                 dockerfile=args.dockerfile)):
             print_formatted(line)
             if 'error' in line.keys():
                 return False
@@ -578,9 +613,10 @@ def build_prod(args):
             f.write('{}\n'.format(args.image))
     return True
 
+
 def start(args):
-    #TODO: normalize all the options
-    #TODO: parse {collective} out of options in the controlfile
+    # TODO: normalize all the options
+    # TODO: parse {collective} out of options in the controlfile
     if options.name:
         options.container['name'] = options.name
     if options.no_volumes:
@@ -589,12 +625,12 @@ def start(args):
 
     # check if image is newer, start again if image is newer
     try:
-        #TODO: if a container exists but the options don't match, log out that
-        #we are starting a container that does not match the merged controlfile
-        #and cli options
+        # TODO: if a container exists but the options don't match, log out that
+        # we are starting a container that does not match the merged controlfile
+        # and cli options
         container = CreatedContainer(options.container['name'], options.container)
     except Container.DoesNotExist:
-        pass #This will probably be the majority case
+        pass  # This will probably be the majority case
     print('Starting {}'.format(options.container['name']))
     try:
         container = container.create()
@@ -605,8 +641,8 @@ def start(args):
         exit(1)
     return True
 
+
 def stop(args):
-    volumes = []
     try:
         container = CreatedContainer(options.container['name'])
         if options.force:
@@ -626,10 +662,12 @@ def stop(args):
         return False
     return True
 
+
 def restart(args):
     if not stop(args):
         return False
     return start(args)
+
 
 def default(args):
     ret = build(args)
@@ -642,6 +680,7 @@ def default(args):
 # Handle global defaults here
 options = argparse.Namespace()
 opts = vars(options)
+opts['debug'] = False
 opts['image'] = None
 opts['dockerfile'] = 'Dockerfile'
 opts['name'] = None
@@ -720,7 +759,8 @@ if os.path.isfile('Controlfile'):
             err('Malformed Controlfile. Not valid JSON: {}'.format(str(e)))
             sys.exit(2)
 else:
-    # TODO: When, eventually, you have to do parsing to override defaults and you move to configparser, change this to print conditionally
+    # TODO: When, eventually, you have to do parsing to override defaults and
+    # you move to configparser, change this to print conditionally
     print('No Controlfile. Proceeding with defaults')
 
 if options.debug:
