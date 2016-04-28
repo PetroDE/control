@@ -23,6 +23,9 @@
 #   - Override global defaults with Controlfile
 #   - Override Controlfile settings with CLI arguments
 #   - Note that docker 1.9 needs docker-py 1.7.x and docker 1.10 needs docker-py 1.8
+#   - Calling build should remove the old image that was using that name
+#   - Calling rere should remove the old image after the container has been
+#     restarted to use the new image
 #
 # TODO: handle ^C without printing a stack trace, like normal people MOM!
 
