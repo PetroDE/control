@@ -1,33 +1,35 @@
 #!/usr/bin/env python3
 
-# PetroDE Control script
-#   It does stuff(TM)
-#
-# A script to build Docker images, compile code, run tests, be friendly to
-# developers, enable local development, check in build configuration next to
-# code, kiss babies, and be popular.
-#
-# We really don't expect much of it. /s
-#
-# Control is a general use build tool. But, it is a developer specific container
-# support tool. Control should not be used to start images in production.
-#
-# Exit codes:
-# 1 - Control operation failed, check output
-# 2 - Something failed early (Docker daemon not started, malformed Controlfile)
-# 3 - Operation pre-check failed
+"""
+PetroDE Control script
+  It does stuff(TM)
 
-# Things that are needed:
-#   - Clearly defined global options when ./control is run
-#   - Clearly defined options when ./control build is run
-#   - Override global defaults with Controlfile
-#   - Override Controlfile settings with CLI arguments
-#   - Note that docker 1.9 needs docker-py 1.7.x and docker 1.10 needs docker-py 1.8
-#   - Calling build should remove the old image that was using that name
-#   - Calling rere should remove the old image after the container has been
-#     restarted to use the new image
-#
-# TODO: handle ^C without printing a stack trace, like normal people MOM!
+A script to build Docker images, compile code, run tests, be friendly to
+developers, enable local development, check in build configuration next to
+code, kiss babies, and be popular.
+
+We really don't expect much of it. /s
+
+Control is a general use build tool. But, it is a developer specific container
+support tool. Control should not be used to start images in production.
+
+Exit codes:
+1 - Control operation failed, check output
+2 - Something failed early (Docker daemon not started, malformed Controlfile)
+3 - Operation pre-check failed
+
+Things that are needed:
+  - Clearly defined global options when ./control is run
+  - Clearly defined options when ./control build is run
+  - Override global defaults with Controlfile
+  - Override Controlfile settings with CLI arguments
+  - Note that docker 1.9 needs docker-py 1.7.x and docker 1.10 needs docker-py 1.8
+  - Calling build should remove the old image that was using that name
+  - Calling rere should remove the old image after the container has been
+    restarted to use the new image
+
+TODO: handle ^C without printing a stack trace, like normal people MOM!
+"""
 
 import argparse
 import base64
@@ -80,7 +82,8 @@ def err(arg):
 
 
 def log(arg, level='info'):
-    if (level == 'info' or
+    if (
+            level == 'info' or
             level == 'error' or
             (level == 'warn' and options.debug) or
             (level == 'debug' and options.debug)):
@@ -289,7 +292,7 @@ class Repository:
         elif domain:
             self.registry = self.domain
         else:
-            self.registry = ''
+            self.registry = None
 
         if self.registry:
             self.repo = '{}/{}:{}'.format(self.registry, self.image, self.tag)
@@ -310,7 +313,7 @@ class Repository:
         return Repository(domain=match.group('domain'),
                           port=match.group('port'),
                           image=match.group('image'),
-                          tag=match.group('tag'))
+                          tag=match.group('tag') or 'latest')
 
 
 class Container:
@@ -572,17 +575,19 @@ def build(args):  # TODO: DRY it up
         sys.exit(3)
     if pulling(upstream) and image_is_newer(upstream):
         log('pulling upstream', level='debug')
-        for line in (json.loads(l.decode('utf-8').strip()) for l in docker.pull(stream=True,
-                                                                                repository=upstream.repo,
-                                                                                tag=upstream.tag)):
+        for line in (json.loads(l.decode('utf-8').strip()) for l in docker.pull(
+                stream=True,
+                repository=upstream.repo,
+                tag=upstream.tag)):
             print_formatted(line)
     if not args.dry_run:
-        for line in (json.loads(l.decode('utf-8').strip()) for l in docker.build(path='.',
-                                                                                 tag=args.image,
-                                                                                 nocache=args.no_cache,
-                                                                                 rm=args.no_rm,
-                                                                                 pull=False,
-                                                                                 dockerfile=args.dockerfile)):
+        for line in (json.loads(l.decode('utf-8').strip()) for l in docker.build(
+                path='.',
+                tag=args.image,
+                nocache=args.no_cache,
+                rm=args.no_rm,
+                pull=False,
+                dockerfile=args.dockerfile)):
             print_formatted(line)
             if 'error' in line.keys():
                 return False
@@ -598,12 +603,13 @@ def build_prod(args):
         err('No image name was specified. Edit your Controlfile or specify with -i')
         sys.exit(3)
     if not args.dry_run:
-        for line in (json.loads(l.decode('utf-8').strip()) for l in docker.build(path='.',
-                                                                                 tag=args.image,
-                                                                                 nocache=args.no_cache,
-                                                                                 rm=args.no_rm,
-                                                                                 pull=args.pull,
-                                                                                 dockerfile=args.dockerfile)):
+        for line in (json.loads(l.decode('utf-8').strip()) for l in docker.build(
+                path='.',
+                tag=args.image,
+                nocache=args.no_cache,
+                rm=args.no_rm,
+                pull=args.pull,
+                dockerfile=args.dockerfile)):
             print_formatted(line)
             if 'error' in line.keys():
                 return False
@@ -677,6 +683,88 @@ def default(args):
         return restart(args)
     return ret
 
+
+def main():
+    # If you set a value that has a default, set it up above, then you must
+    # reference that default here, otherwise it will be clobbered
+    parser = argparse.ArgumentParser(description='Control the building and running of images and containers')
+    parser.add_argument('-d', '--debug', action='store_true', help='print debug information helpful to developing the control script. This probably won\'t be useful to using the script, consider -v')
+    parser.add_argument('-f', '--force', action='store_true', help='be forceful in all things')
+    parser.add_argument('-n', '--dry-run', action='store_true', help='Pretend to execute actions, but only log that they happened')
+    parser.add_argument('-i', '--image', default=options.image, help='override the tagged name of the image being built')
+    parser.add_argument('--name', help='the name to give to the container')
+    parser.add_argument('--dockerfile', default=options.dockerfile, help='override the dockerfile used to build the image')
+    parser.add_argument('--no-cache', action='store_true', help='do not use the cache')
+    parser.add_argument('--pull', action='store_const', const=True, dest='pull', help='pull the image from upstream')
+    parser.add_argument('--no-pull', action='store_const', const=False, dest='pull', help='do not pull newer versions of the base image')
+    parser.add_argument('--no-volumes', action='store_true', help='override the volumes mentioned in the Controlfile')
+    parser.add_argument('--no-verify', action='store_true', help='do not check the validity of the registry\'s SSL cert')
+    parser.add_argument('--wipe', action='store_true', help='Make sure that volumes are empty after stopping. May require sudo. THIS IS EXTREMELY DANGEROUS')
+    parser.add_argument('-V', '--version', action='version', version='%(prog)s v{}'.format(options.version))
+    parser.set_defaults(func=default)
+    subparsers = parser.add_subparsers()
+
+    # TODO: add child parsers that handle the individual actions
+    build_parser = subparsers.add_parser('build', description='Build an image')
+    build_parser.add_argument('-i', '--image', default=options.image, help='override the tagged name of the image being built')
+    build_parser.add_argument('--dockerfile', default=options.dockerfile, help='override the dockerfile used to build the image')
+    build_parser.add_argument('--no-cache', action='store_true', help='do not use the cache')
+    build_parser.add_argument('--no-rm', action='store_false', help='do not remove any images, even on success')
+    build_parser.add_argument('--no-verify', action='store_true', help='do not check the validity of the registry\'s SSL cert')
+    build_parser.add_argument('--pull', action='store_const', const=True, help='pull the image from upstream')
+    build_parser.add_argument('--no-pull', action='store_const', const=False, dest='pull', help='do not pull newer versions of the base image')
+    build_parser.set_defaults(func=build)
+
+    buildprod_parser = subparsers.add_parser('build-prod', description='''Build a
+            production image. This is the option used by Jenkins. No other options
+            will be specified, so pick good defaults. Writes a file IMAGES.txt
+            which is a newline delimited file of the images that should be pushed
+            to the registry.''')
+    buildprod_parser.add_argument('-i', '--image', default=options.image, help='override the tagged name of the image being built')
+    buildprod_parser.add_argument('--no-cache', default=True, action='store_true', help='allow the build to use the cache')
+    buildprod_parser.add_argument('--no-pull', action='store_const', const=False, dest='pull', help='do not pull newer versions of the base image')
+    buildprod_parser.set_defaults(func=build_prod)
+
+    start_parser = subparsers.add_parser('start', description='start a container using an image')
+    start_parser.add_argument('-n', '--name', help='the name to give to the container')
+    start_parser.add_argument('-i', '--image', help='override the tagged name of the image being built')
+    start_parser.add_argument('--no-volumes', action='store_true', help='override the volumes mentioned in the Controlfile')
+    start_parser.set_defaults(func=start)
+
+    stop_parser = subparsers.add_parser('stop', description='stop a container. This will inform docker to remove volumes that it can remove')
+    stop_parser.add_argument('-f', '--force', action='store_true', help='Do not wait for the container to gracefully shut down')
+    stop_parser.add_argument('-w', '--wipe', action='store_true', help='Make sure that volumes are empty after stopping. May require sudo. THIS IS EXTREMELY DANGEROUS')
+    stop_parser.set_defaults(func=stop)
+
+    restart_parser = subparsers.add_parser('restart', description='remove a container, and start it up again')
+    restart_parser.add_argument('-f', '--force', action='store_true', help='Do not wait for the container to gracefully shut down')
+    restart_parser.add_argument('-n', '--name', help='the name to give to the container')
+    restart_parser.add_argument('-i', '--image', help='override the tagged name of the image being built')
+    restart_parser.add_argument('-w', '--wipe', action='store_true', help='Make sure that volumes are empty after stopping. May require sudo. THIS IS EXTREMELY DANGEROUS')
+    restart_parser.add_argument('--no-volumes', action='store_true', help='override the volumes mentioned in the Controlfile')
+    restart_parser.set_defaults(func=restart)
+    parser.parse_args(namespace=options)
+
+    # Read in a Controlfile if one exists
+    if os.path.isfile('Controlfile'):
+        with open('Controlfile', 'r') as f:
+            try:
+                vars(options).update(json.load(f))
+            except json.decoder.JSONDecodeError as e:
+                err('Malformed Controlfile. Not valid JSON: {}'.format(str(e)))
+                sys.exit(2)
+    else:
+        # TODO: When, eventually, you have to do parsing to override defaults and
+        # you move to configparser, change this to print conditionally
+        print('No Controlfile. Proceeding with defaults')
+
+    if options.debug:
+        print('options={}'.format(vars(options)))
+
+    ret = options.func(options)
+    if not ret:
+        sys.exit(1)
+
 # Handle global defaults here
 options = argparse.Namespace()
 opts = vars(options)
@@ -689,91 +777,10 @@ opts['no_rm'] = True
 opts['pull'] = None
 opts['version'] = '1.5'
 
-# If you set a value that has a default, set it up above, then you must
-# reference that default here, otherwise it will be clobbered
-parser = argparse.ArgumentParser(description='Control the building and running of images and containers')
-parser.add_argument('-d', '--debug', action='store_true', help='print debug information helpful to developing the control script. This probably won\'t be useful to using the script, consider -v')
-parser.add_argument('-f', '--force', action='store_true', help='be forceful in all things')
-parser.add_argument('-n', '--dry-run', action='store_true', help='Pretend to execute actions, but only log that they happened')
-parser.add_argument('-i', '--image', default=options.image, help='override the tagged name of the image being built')
-parser.add_argument('--name', help='the name to give to the container')
-parser.add_argument('--dockerfile', default=options.dockerfile, help='override the dockerfile used to build the image')
-parser.add_argument('--no-cache', action='store_true', help='do not use the cache')
-parser.add_argument('--pull', action='store_const', const=True, dest='pull', help='pull the image from upstream')
-parser.add_argument('--no-pull', action='store_const', const=False, dest='pull', help='do not pull newer versions of the base image')
-parser.add_argument('--no-volumes', action='store_true', help='override the volumes mentioned in the Controlfile')
-parser.add_argument('--no-verify', action='store_true', help='do not check the validity of the registry\'s SSL cert')
-parser.add_argument('--wipe', action='store_true', help='Make sure that volumes are empty after stopping. May require sudo. THIS IS EXTREMELY DANGEROUS')
-parser.add_argument('-V', '--version', action='version', version='%(prog)s v{}'.format(options.version))
-parser.set_defaults(func=default)
-subparsers = parser.add_subparsers()
-
-# TODO: add child parsers that handle the individual actions
-build_parser = subparsers.add_parser('build', description='Build an image')
-build_parser.add_argument('-i', '--image', default=options.image, help='override the tagged name of the image being built')
-build_parser.add_argument('--dockerfile', default=options.dockerfile, help='override the dockerfile used to build the image')
-build_parser.add_argument('--no-cache', action='store_true', help='do not use the cache')
-build_parser.add_argument('--no-rm', action='store_false', help='do not remove any images, even on success')
-build_parser.add_argument('--no-verify', action='store_true', help='do not check the validity of the registry\'s SSL cert')
-build_parser.add_argument('--pull', action='store_const', const=True, help='pull the image from upstream')
-build_parser.add_argument('--no-pull', action='store_const', const=False, dest='pull', help='do not pull newer versions of the base image')
-build_parser.set_defaults(func=build)
-
-buildprod_parser = subparsers.add_parser('build-prod', description='''Build a
-        production image. This is the option used by Jenkins. No other options
-        will be specified, so pick good defaults. Writes a file IMAGES.txt
-        which is a newline delimited file of the images that should be pushed
-        to the registry.''')
-buildprod_parser.add_argument('-i', '--image', default=options.image, help='override the tagged name of the image being built')
-buildprod_parser.add_argument('--no-cache', default=True, action='store_true', help='allow the build to use the cache')
-buildprod_parser.add_argument('--no-pull', action='store_const', const=False, dest='pull', help='do not pull newer versions of the base image')
-buildprod_parser.set_defaults(func=build_prod)
-
-start_parser = subparsers.add_parser('start', description='start a container using an image')
-start_parser.add_argument('-n', '--name', help='the name to give to the container')
-start_parser.add_argument('-i', '--image', help='override the tagged name of the image being built')
-start_parser.add_argument('--no-volumes', action='store_true', help='override the volumes mentioned in the Controlfile')
-start_parser.set_defaults(func=start)
-
-stop_parser = subparsers.add_parser('stop', description='stop a container. This will inform docker to remove volumes that it can remove')
-stop_parser.add_argument('-f', '--force', action='store_true', help='Do not wait for the container to gracefully shut down')
-stop_parser.add_argument('-w', '--wipe', action='store_true', help='Make sure that volumes are empty after stopping. May require sudo. THIS IS EXTREMELY DANGEROUS')
-stop_parser.set_defaults(func=stop)
-
-restart_parser = subparsers.add_parser('restart', description='remove a container, and start it up again')
-restart_parser.add_argument('-f', '--force', action='store_true', help='Do not wait for the container to gracefully shut down')
-restart_parser.add_argument('-n', '--name', help='the name to give to the container')
-restart_parser.add_argument('-i', '--image', help='override the tagged name of the image being built')
-restart_parser.add_argument('-w', '--wipe', action='store_true', help='Make sure that volumes are empty after stopping. May require sudo. THIS IS EXTREMELY DANGEROUS')
-restart_parser.add_argument('--no-volumes', action='store_true', help='override the volumes mentioned in the Controlfile')
-restart_parser.set_defaults(func=restart)
-parser.parse_args(namespace=options)
-
-
-# Read in a Controlfile if one exists
-if os.path.isfile('Controlfile'):
-    with open('Controlfile', 'r') as f:
-        try:
-            vars(options).update(json.load(f))
-        except json.decoder.JSONDecodeError as e:
-            err('Malformed Controlfile. Not valid JSON: {}'.format(str(e)))
-            sys.exit(2)
-else:
-    # TODO: When, eventually, you have to do parsing to override defaults and
-    # you move to configparser, change this to print conditionally
-    print('No Controlfile. Proceeding with defaults')
-
-if options.debug:
-    print('options={}'.format(vars(options)))
-
 # Docker.Client doesn't raise an exception. They just crash the program. This
 # is the most graceful way I can save this.
 if os.path.exists('/var/run/docker.sock'):
     docker = Docker.Client(base_url='unix://var/run/docker.sock')
-else:
-    err('docker daemon not started')
-    sys.exit(2)
 
-ret = options.func(options)
-if not ret:
-    sys.exit(1)
+if __name__ == '__main__':
+    main()
