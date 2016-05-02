@@ -49,6 +49,10 @@ class RepositoryTest(unittest.TestCase):
         self.assertTrue(repository.port == '5002')
         self.assertTrue(repository.registry == 'docker.petrode.com:5002')
 
+
+class MatcherTest(unittest.TestCase):
+    """Test the matcher function that it correctly creates Repositories"""
+
     def test_matching_only_latest_image(self):
         """Create a repo based on just an image name"""
         repository = control.Repository.match('ubuntu')
@@ -73,7 +77,7 @@ class RepositoryTest(unittest.TestCase):
         self.assertTrue(repository.domain == 'docker.petrode.com')
         self.assertTrue(repository.port is None)
 
-    def test_matching_image_full_length(self):
+    def test_matchnig_repo_with_registry_and_port(self):
         """Create a repo based on an image from a registry running on not 443"""
         repository = control.Repository.match('docker.petrode.com:5002/ubuntu:14.04')
         self.assertTrue(repository.image == 'ubuntu')
@@ -81,5 +85,12 @@ class RepositoryTest(unittest.TestCase):
         self.assertTrue(repository.domain == 'docker.petrode.com')
         self.assertTrue(repository.port == '5002')
 
+def suite():
+    suite = unittest.TestSuite()
+    suite.addTest(unittest.makeSuite(RepositoryTest))
+    suite.addTest(unittest.makeSuite(MatcherTest))
+    return suite
+
 if __name__ == '__main__':
-    unittest.main()
+    runner = unittest.TextTestRunner()
+    runner.run(suite())
