@@ -305,8 +305,9 @@ class Repository:
         docker.Client.pull() does not allow you to specify a registry to pull from,
         but instead believes that ({registry}/){image} is the name of the image.
         """
-        # TODO: implement and change build
-        pass
+        if self.registry:
+            return "{}/{}".format(self.registry, self.image)
+        return self.image
 
     @classmethod
     def match(cls, text):
@@ -586,7 +587,7 @@ def build(args):  # TODO: DRY it up
         log('pulling upstream', level='debug')
         for line in (json.loads(l.decode('utf-8').strip()) for l in docker.pull(
                 stream=True,
-                repository=upstream.repo,
+                repository=upstream.get_pull_image_name(),
                 tag=upstream.tag)):
             print_formatted(line)
     if not args.dry_run:
