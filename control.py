@@ -299,6 +299,15 @@ class Repository:
         else:
             self.repo = '{}:{}'.format(self.image, self.tag)
 
+    def get_pull_image_name(self):
+        """
+        This function exists because docker pull is the worst API endpoint.
+        docker.Client.pull() does not allow you to specify a registry to pull from,
+        but instead believes that ({registry}/){image} is the name of the image.
+        """
+        # TODO: implement and change build
+        pass
+
     @classmethod
     def match(cls, text):
         """Uses a regex to construct a Repository. Matches more than is valid,
