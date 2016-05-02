@@ -2,21 +2,23 @@
 """Module to test Registry functioning"""
 
 import unittest
+import docker
 
 import control
 
 
 class RegistryWrongCert(unittest.TestCase):
     """Tests that ensure that a wrong cert is handled correctly"""
-    NotImplemented
 
+    def setUp(self):
+        dclient = docker.Client(base_url='unix://var/run/docker.sock')
+        #dclient.
 
-class RegistryCertReadPermissions(unittest.TestCase):
-    """
-    Test to make sure messaging is good for cases when the certificate
-    for the registry cannot be read
-    """
-    NotImplemented
+    def test_cannot_read_cert_file(self):
+        pass
+
+    def test_wrong_cert_in_dir(self):
+        pass
 
 
 class RegistryPullRepoData(unittest.TestCase):
@@ -26,16 +28,15 @@ class RegistryPullRepoData(unittest.TestCase):
 
     There will be lots of mocking.
     """
-    NotImplemented
+    pass
 
 
 def suite():
-    suite = unittest.TestSuite()
-    suite.addTest(unittest.makeSuite(RegistryWrongCert))
-    suite.addTest(unittest.makeSuite(RegistryCertReadPerms))
-    suite.addTest(unittest.makeSuite(RegistryPullRepoData))
-    return suite
+    """Group TestCases together so all the tests run"""
+    testsuite = unittest.TestSuite()
+    testsuite.addTest(unittest.makeSuite(RegistryWrongCert))
+    testsuite.addTest(unittest.makeSuite(RegistryPullRepoData))
+    return testsuite
 
 if __name__ == '__main__':
-    runner = unittest.TextTestRunner()
-    runner.run(suite())
+    unittest.TextTestRunner().run(suite())

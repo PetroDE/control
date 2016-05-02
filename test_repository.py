@@ -77,7 +77,7 @@ class MatcherTest(unittest.TestCase):
         self.assertTrue(repository.domain == 'docker.petrode.com')
         self.assertTrue(repository.port is None)
 
-    def test_matchnig_repo_with_registry_and_port(self):
+    def test_match_repo_with_registry(self):
         """Create a repo based on an image from a registry running on not 443"""
         repository = control.Repository.match('docker.petrode.com:5002/ubuntu:14.04')
         self.assertTrue(repository.image == 'ubuntu')
@@ -85,12 +85,13 @@ class MatcherTest(unittest.TestCase):
         self.assertTrue(repository.domain == 'docker.petrode.com')
         self.assertTrue(repository.port == '5002')
 
+
 def suite():
-    suite = unittest.TestSuite()
-    suite.addTest(unittest.makeSuite(RepositoryTest))
-    suite.addTest(unittest.makeSuite(MatcherTest))
-    return suite
+    """Group TestCases together so all the tests run"""
+    testsuite = unittest.TestSuite()
+    testsuite.addTest(unittest.makeSuite(RepositoryTest))
+    testsuite.addTest(unittest.makeSuite(MatcherTest))
+    return testsuite
 
 if __name__ == '__main__':
-    runner = unittest.TextTestRunner()
-    runner.run(suite())
+    unittest.TextTestRunner().run(suite())

@@ -15,17 +15,18 @@ class CreateContainer(unittest.TestCase):
     def test_happy_path(self):
         """Make sure that the defaults still work"""
         image = 'busybox'
-        conf = {"name":"grafana","hostname":"grafana"}
+        conf = {"name": "grafana", "hostname": "grafana"}
         container = control.Container(image, conf)
         self.assertEqual(container.expected_timeout, 10)
         self.assertEqual(container.conf['image'], image)
 
 
 def suite():
-    suite = unittest.TestSuite()
-    suite.addTest(unittest.makeSuite(RepositoryTest))
-    return suite
+    """Group TestCases together so all the tests run"""
+    testsuite = unittest.TestSuite()
+    testsuite.addTest(unittest.makeSuite(CreateContainer))
+    return testsuite
+
 
 if __name__ == '__main__':
-    runner = unittest.TextTestRunner()
-    runner.run(suite())
+    unittest.TextTestRunner().run(suite())
