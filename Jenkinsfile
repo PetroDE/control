@@ -1,7 +1,7 @@
 node {
-    step 'Checkout'
+    Step 'Checkout'
     checkout scm
-    step 'Test'
+    Step 'Test'
     sh "./tests.sh"
     step([$class: 'JUnitResultArchiver', testResults: 'results.xml'])
 }
