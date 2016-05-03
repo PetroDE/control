@@ -47,9 +47,6 @@ class VolumeCreationTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.dclient = docker.Client('unix://var/run/docker.sock')
-        for line in (json.loads(l.decode('utf-8').strip())
-                     for l in cls.dclient.pull('busybox:latest', stream=True)):
-            print(line)
 
     def setUp(self):
         # control.options.debug = True
@@ -130,6 +127,12 @@ class VolumeCreationTests(unittest.TestCase):
             msg="Unexpected mount source: {}".format(
                 container.inspect['Mounts'][0]['Source']))
         temp_dir.cleanup()
+
+
+def setUpModule():
+    """Ensure that our test images exist"""
+    dclient = docker.Client('unix://var/run/docker.sock')
+    dclient.pull('busybox:latest')
 
 
 def suite():
