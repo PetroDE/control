@@ -46,6 +46,7 @@ class VolumeCreationTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.dclient = docker.Client('unix://var/run/docker.sock')
+        cls.dclient.pull('busybox:latest')
 
     def setUp(self):
         # control.options.debug = True
