@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Test creation and use of the Container class"""
 
-import unittest
+import json
 import random
+import unittest
 import docker
 
 import control
@@ -46,7 +47,9 @@ class VolumeCreationTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.dclient = docker.Client('unix://var/run/docker.sock')
-        cls.dclient.pull('busybox:latest')
+        for line in (json.loads(l.decode('utf-8').strip())
+                     for l in cls.dclient.pull('busybox:latest', stream=True)):
+            print(line)
 
     def setUp(self):
         # control.options.debug = True
