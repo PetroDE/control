@@ -21,6 +21,8 @@ class CreateContainer(unittest.TestCase):
 
     def setUp(self):
         # control.options.debug = True
+        self.image = ''
+        self.conf = {}
         self.container_volumes = []
         self.container_name = 'unittest_createcontainer_{}'.format(
             random.randint(1, 65535))
@@ -35,32 +37,32 @@ class CreateContainer(unittest.TestCase):
 
     def test_happy_path(self):
         """Make sure that the defaults still work"""
-        image = 'busybox'
-        conf = {
+        self.image = 'busybox'
+        self.conf = {
             "name": self.container_name,
             "hostname": "happy_path"
         }
-        container = control.Container(image, conf)
+        container = control.Container(self.image, self.conf)
         self.assertEqual(container.expected_timeout, 10)
         self.assertEqual(container.conf['name'], self.container_name)
         self.assertEqual(container.conf['hostname'], "happy_path")
-        self.assertEqual(container.conf['image'], image)
+        self.assertEqual(container.conf['image'], self.image)
 
     def test_expected_timeout(self):
         """Test mirroring unspecified values and overriding default timeout"""
-        image = 'busybox'
-        conf = {
+        self.image = 'busybox'
+        self.conf = {
             "name": self.container_name,
             "expected_timeout": 3
         }
-        container = control.Container(image, conf)
+        container = control.Container(self.image, self.conf)
         self.assertEqual(container.expected_timeout, 3)
         self.assertEqual(container.conf['name'], self.container_name)
         self.assertEqual(
             container.conf['hostname'],
             self.container_name,
             msg='Unspecified hostname not being mirrored from container name')
-        self.assertEqual(container.conf['image'], image)
+        self.assertEqual(container.conf['image'], self.image)
         with self.assertRaises(KeyError):
             container.conf['expected_timeout']
 
@@ -69,17 +71,17 @@ class CreateContainer(unittest.TestCase):
         Need to test that environment variables are always getting parsed
         correctly
         """
-        image = 'busybox'
-        conf = {
+        self.image = 'busybox'
+        self.conf = {
             "name": self.container_name,
             "hostname": "grafana",
             "environment": [
                 "PASSWORD=password",
             ]
         }
-        container = control.Container(image, conf)
+        container = control.Container(self.image, self.conf)
         conf_copy = container.get_container_options()
-        self.assertEqual(conf_copy['environment'][0], conf['environment'][0])
+        self.assertEqual(conf_copy['environment'][0], self.conf['environment'][0])
 
     def test_volume_parsing(self):
         """Make sure that volumes get created correctly"""
@@ -102,8 +104,8 @@ class CreateContainer(unittest.TestCase):
 
     def test_value_substitution(self):
         """Test name substitution working"""
-        image = 'busybox'
-        conf = {
+        self.image = 'busybox'
+        self.conf = {
             "name": "{container}.{{{{COLLECTIVE}}}}".format(container=self.container_name),
             "environment": [
                 "DOMAIN={{COLLECTIVE}}.petrode.com"
@@ -117,7 +119,7 @@ class CreateContainer(unittest.TestCase):
             ]
         }
         os.environ['COLLECTIVE'] = 'example'
-        container = control.Container(image, conf)
+        container = control.Container(self.image, self.conf)
         conf_copy = container.get_container_options()
         self.assertEqual(
             conf_copy['name'],

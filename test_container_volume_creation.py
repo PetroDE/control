@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Test creation and use of the Container class"""
+"""Test creation of volumes when containers are being created"""
 
 import random
 import unittest
@@ -20,6 +20,8 @@ class VolumeCreationTests(unittest.TestCase):
 
     def setUp(self):
         # control.options.debug = True
+        self.image = ''
+        self.conf = {}
         self.container_volumes = []
         self.container_name = 'unittest_volumecreation_{}'.format(
             random.randint(1, 65535))
@@ -39,13 +41,13 @@ class VolumeCreationTests(unittest.TestCase):
 
         Currently unimplemented and will fail
         """
-        image = 'busybox'
-        conf = {
+        self.image = 'busybox'
+        self.conf = {
             "name": self.container_name,
             "hostname": "busybox",
             "volumes": ["/var"]
         }
-        container = control.Container(image, conf).create()
+        container = control.Container(self.image, self.conf).create()
         container.start()
         self.assertEqual(len(container.inspect['Mounts']), 1)
         self.assertEqual(len(container.inspect['Mounts'][0]['Name']), 65)
@@ -60,13 +62,13 @@ class VolumeCreationTests(unittest.TestCase):
         """Make sure that named volumes are correctly registered"""
         volume_name = "control_unittest_volume{}".format(random.randint(1, 65535))
         self.container_volumes.append(volume_name)
-        image = 'busybox'
-        conf = {
+        self.image = 'busybox'
+        self.conf = {
             "name": self.container_name,
             "hostname": "busybox",
             "volumes": ["{}:/var".format(volume_name)]
         }
-        container = control.Container(image, conf).create()
+        container = control.Container(self.image, self.conf).create()
         container.start()
         self.assertEqual(len(container.inspect['Mounts']), 1)
         self.assertEqual(len(container.inspect['Mounts'][0]['Name']), len(volume_name))
@@ -82,13 +84,13 @@ class VolumeCreationTests(unittest.TestCase):
         import tempfile
 
         temp_dir = tempfile.TemporaryDirectory()
-        image = 'busybox'
-        conf = {
+        self.image = 'busybox'
+        self.conf = {
             "name": self.container_name,
             "hostname": "busybox",
             "volumes": ["{}:/var".format(temp_dir.name)]
         }
-        container = control.Container(image, conf).create()
+        container = control.Container(self.image, self.conf).create()
         container.start()
         self.assertEqual(len(container.inspect['Mounts']), 1)
         self.assertEqual(container.inspect['Mounts'][0]['Destination'], '/var')
