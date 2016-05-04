@@ -793,7 +793,7 @@ opts['no_cache'] = False
 opts['no_rm'] = True
 opts['no_verify'] = False
 opts['pull'] = None
-opts['version'] = '1.5'
+opts['version'] = '2.0'
 
 # Docker.Client doesn't raise an exception. They just crash the program. This
 # is the most graceful way I can save this.
