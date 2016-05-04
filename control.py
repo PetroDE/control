@@ -328,7 +328,7 @@ class Repository:
                           tag=match.group('tag') or 'latest')
 
 
-class Container:
+class Container(object):
     """
     Container is a data structure for a container. Controlfiles that specify
     containers will be read into this structure and have defaults applied where
@@ -398,10 +398,15 @@ class Container:
             self.expected_timeout = conf.pop('expected_timeout')
         except KeyError:
             pass
+        try:
+            if 'hostname' not in conf:
+                conf['hostname'] = conf['name']
+        except KeyError:
+            pass
         self.conf.update(conf)
         self.conf['image'] = image
 
-    def __get_container_options(self):
+    def get_container_options(self):
         conf_copy = self.conf.copy()
         host_config = {}
         try:
@@ -416,7 +421,7 @@ class Container:
         log(self.conf, level='debug')
         try:
             return CreatedContainer(
-                docker.create_container(**self.__get_container_options()),
+                docker.create_container(**self.get_container_options()),
                 self.conf)
         except Docker.errors.NotFound as e:
             if 'chown' in e.explanation.decode('utf-8'):
