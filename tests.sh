@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
 
-py.test --junitxml results.xml test_*.py
+for testfile in test_*.py; do
+    py.test -v --junitxml results_${testfile:5:-3}.xml $testfile
+done
 exit 0

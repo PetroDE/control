@@ -3,5 +3,5 @@ node {
     checkout scm
     stage 'Test'
     sh "./tests.sh"
-    step([$class: 'JUnitResultArchiver', testResults: 'results.xml'])
+    step([$class: 'JUnitResultArchiver', testResults: 'results*.xml'])
 }
