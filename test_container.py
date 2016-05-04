@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Test creation and use of the Container class"""
 
-import json
 import random
 import unittest
 import docker

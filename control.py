@@ -91,13 +91,15 @@ def log(arg, level='info'):
 
 
 class Registry:
-    """Abstraction for communicating with a Docker V2 Registry.
+    """
+    Abstraction for communicating with a Docker V2 Registry.
 
     Insecure registries, V1 registries, and the Docker Hub are not supported.
     """
 
-    def __init__(self, domain, port=None):
-        """Take a domain name and a string port number and create a Registry object.
+    def __init__(self, domain, port=None, certdir='/etc/docker/certs.d'):
+        """
+        Take a domain name and a string port number and create a Registry object.
 
         This constructor ensures that it can communicate with the registry
         specified in the constructor, so construction will take time dependent
@@ -118,7 +120,7 @@ class Registry:
             self.endpoint = self.domain
         # TODO support insecure registries and V1 registries
         self.baseuri = 'https://{}/v2'.format(self.endpoint)
-        certdir = '/etc/docker/certs.d/{reg}'.format(reg=self.endpoint)
+        certdir = '{dir}/{reg}'.format(dir=certdir, reg=self.endpoint)
         self.use_cert = False
         self.session = requests.Session()
         if os.path.isfile(os.path.expanduser('~/.docker/config.json')):
@@ -784,6 +786,7 @@ opts['dockerfile'] = 'Dockerfile'
 opts['name'] = None
 opts['no_cache'] = False
 opts['no_rm'] = True
+opts['no_verify'] = False
 opts['pull'] = None
 opts['version'] = '1.5'
 
