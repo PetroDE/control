@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Test creation and use of the Container class"""
 
+import os
 import random
 import unittest
 import docker
@@ -35,6 +36,61 @@ class CreateContainer(unittest.TestCase):
         self.assertEqual(container.conf['image'], image)
         with self.assertRaises(KeyError):
             container.conf['expected_timeout']
+
+    def test_env_var_parsing(self):
+        """
+        Need to test that environment variables are always getting parsed
+        correctly
+        """
+        image = 'busybox'
+        conf = {
+            "name": "grafana",
+            "hostname": "grafana",
+            "environment": [
+                "PASSWORD=password",
+            ]
+        }
+        container = control.Container(image, conf)
+        conf_copy = container.__get_container_options()
+        self.assertEqual(conf_copy['environment'][0], conf['environment'][0])
+
+    def test_volume_parsing(self):
+        """Make sure that volumes get created correctly"""
+        image = 'busybox'
+        conf = {
+            "name": "grafana",
+            "hostname": "grafana",
+            "volumes": [
+                "/var",
+                "named-user:/usr",
+                "/mnt/usrbin:/usr/bin",
+            ]
+        }
+        container = control.Container(image, conf)
+        conf_copy = container.__get_container_options()
+        self.assertEqual(conf_copy['image'], image)
+        self.assertEqual(conf_copy['host_config']['Binds'][0], conf['volumes'][0])
+        self.assertEqual(conf_copy['host_config']['Binds'][1], conf['volumes'][1])
+        self.assertEqual(conf_copy['host_config']['Binds'][2], conf['volumes'][2])
+
+    def test_value_substitution(self):
+        """Test name substitution working"""
+        os.environ['COLLECTIVE'] = 'example'
+        image = 'busybox'
+        conf = {
+            "name": "grafana.{COLLECTIVE}",
+            "hostname": "grafana",
+            "environment": [
+                "DOMAIN={COLLECTIVE}.petrode.com"
+            ],
+            "volumes": [
+                "/mnt/log/{COLLECTIVE}:/var/log"
+            ]
+        }
+        os.environ['COLLECTIVE'] = 'example'
+        container = control.Container(image, conf)
+        self.assertEqual(container.conf['name'], image)
+        del os.environ['COLLECTIVE']
 
 
 class VolumeCreationTests(unittest.TestCase):
