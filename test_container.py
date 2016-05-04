@@ -102,6 +102,21 @@ class CreateContainer(unittest.TestCase):
         self.assertEqual(conf_copy['host_config']['Binds'][1], conf['volumes'][1])
         self.assertEqual(conf_copy['host_config']['Binds'][2], conf['volumes'][2])
 
+    def test_dns_search(self):
+        """test that dns search makes it into the host config"""
+        self.image = 'busybox'
+        self.conf = {
+            "name": self.container_name,
+            "dns_search": [
+                "example"
+            ]
+        }
+        container = control.Container(self.image, self.conf)
+        conf_copy = container.get_container_options()
+        self.assertEqual(
+            conf_copy['host_config']['dns_search'][0],
+            "example")
+
     def test_value_substitution(self):
         """Test name substitution working"""
         self.image = 'busybox'
@@ -142,12 +157,5 @@ def setUpModule():
     dclient.pull('busybox:latest')
 
 
-def suite():
-    """Group TestCases together so all the tests run"""
-    testsuite = unittest.TestSuite()
-    testsuite.addTest(unittest.makeSuite(CreateContainer))
-    return testsuite
-
-
 if __name__ == '__main__':
-    unittest.TextTestRunner().run(suite())
+    unittest.main()
