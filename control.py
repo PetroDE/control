@@ -34,6 +34,7 @@ TODO: handle ^C without printing a stack trace, like normal people MOM!
 import argparse
 import base64
 import json
+import logging
 import os
 import re
 import shutil
@@ -46,6 +47,8 @@ import docker as Docker
 # insecure
 from requests.packages.urllib3.exceptions import InsecureRequestWarning
 requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
+
+logger = logging.getLogger('control')
 
 # Here's a snippet of code for when you have to call a docker function
 #
@@ -88,6 +91,37 @@ def log(arg, level='info'):
             (level == 'warn' and options.debug) or
             (level == 'debug' and options.debug)):
         print('[{LEVEL:5s}] {ARG}'.format(LEVEL=level.upper(), ARG=arg), file=sys.stderr)
+
+
+class NameMissingFromService(Exception):
+    pass
+
+
+class InvalidControlfile(Exception):
+    pass
+
+
+def normalize_controlfiles(controlfile_location='Controlfile'):
+    """
+    There's two types of Controlfiles. A multi-service file that allows some
+    meta-operations on top of the other kind of Controlfile. The second kind is
+    the single service Controlfile. Full Controlfiles can reference both kinds
+    files to load in more options for meta-services.
+    """
+    control = {
+        'services': []
+    }
+    # TODO make sure to test when there is no Controlfile and catch that error
+    try:
+        with open(controlfile_location, 'r') as controlfile:
+            data = json.load(controlfile)
+            if 'services' in data:
+                control = data
+            else:
+                control['services'].append(data)
+    except json.decoder.JSONDecodeError as error:
+        logger.critical('Could not parse Controlfile as JSON: %s', error)
+        raise InvalidControlfile
 
 
 class Registry:
