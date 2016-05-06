@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Test Controlfile discovery and normalization"""
 
+import json
+import tempfile
 import unittest
 
 import control
@@ -14,7 +16,8 @@ class ControlfileNormalizationTest(unittest.TestCase):
 
     def test_single_service_controlfile(self):
         """Make sure that we don't break single service controlfiles"""
-        #tempfile = 
+        temp_dir = tempfile.TemporaryDirectory()
+        controlfile = '{}/Controlfile'.format(temp_dir.name)
         conf = {
             "image": "busybox",
             "container": {
@@ -30,3 +33,5 @@ class ControlfileNormalizationTest(unittest.TestCase):
         }
         with open(controlfile, 'w') as f:
             f.write(json.dumps(conf))
+        ret = control.normalize_controlfiles(controlfile_location=controlfile)
+        self.assertEqual(ret['services'][0], conf)
