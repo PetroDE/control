@@ -116,12 +116,17 @@ def normalize_controlfiles(controlfile_location='Controlfile'):
         with open(controlfile_location, 'r') as controlfile:
             data = json.load(controlfile)
             if 'services' in data:
-                control = data
+                control.update(data)
             else:
                 control['services'].append(data)
     except json.decoder.JSONDecodeError as error:
         logger.critical('Could not parse Controlfile as JSON: %s', error)
         raise InvalidControlfile
+    for service in (s for s in control['services'] if 'controlfile' in s):
+        with open(service['controlfile'], 'r') as ctrlfile:
+            data = json.load(ctrlfile)
+            control['services'].append(data)
+    return control
 
 
 class Registry:

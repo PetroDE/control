@@ -35,3 +35,32 @@ class ControlfileNormalizationTest(unittest.TestCase):
             f.write(json.dumps(conf))
         ret = control.normalize_controlfiles(controlfile_location=controlfile)
         self.assertEqual(ret['services'][0], conf)
+        temp_dir.cleanup()
+
+    def test_including_controlfiles(self):
+        """Make sure that single level Controlfile inclusion works correctly"""
+        temp_dir = tempfile.TemporaryDirectory()
+        controlfile = '{}/Controlfile'.format(temp_dir.name)
+        conf = {
+            "services": [
+                {
+                    "service": "test",
+                    "controlfile": "test/Controlfile"
+                }
+            ]
+        }
+        service_conf = {
+            "image": "busybox",
+            "container": {
+                "name": "example",
+                "hostname": "example",
+                "volumes": ["namevolume:/var/log"],
+                "dns_search": ["example"]
+            }
+        }
+        with open(controlfile, 'w') as f:
+            f.write(json.dumps(conf))
+
+
+        ret = control.normalize_controlfiles(controlfile)
+
