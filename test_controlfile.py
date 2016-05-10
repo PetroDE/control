@@ -39,7 +39,11 @@ class ControlfileNormalizationTest(unittest.TestCase):
         temp_dir.cleanup()
 
     def test_including_controlfiles(self):
-        """Make sure that single level Controlfile inclusion works correctly"""
+        """
+        Make sure that single level Controlfile inclusion works correctly,
+        it also checks if relative path includes are correctly dereferenced
+        from the Controlfile location.
+        """
         temp_dir = tempfile.TemporaryDirectory()
         controlfile = '{}/Controlfile'.format(temp_dir.name)
         conf = {
