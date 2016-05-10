@@ -71,3 +71,43 @@ class ControlfileNormalizationTest(unittest.TestCase):
 
         ret = control.normalize_controlfiles(controlfile)
         self.assertEqual(ret['services'][0], service_conf)
+        temp_dir.cleanup()
+
+    @unittest.skip('fixing a prereq for this test')
+    def test_nested_controlfile_discovery(self):
+        """Reference a Controlfile that references other Controlfiles"""
+        temp_dir = tempfile.TemporaryDirectory()
+        controlfile = '{}/Controlfile'.format(temp_dir.name)
+        conf = {
+            "services": [
+                {
+                    "service": "test",
+                    "controlfile": "test/Controlfile"
+                }
+            ]
+        }
+        foo_conf = {
+            "services": [
+                {
+                    "service": "foo",
+                    "controlfile": "foo/Controlfile"
+                }
+            ]
+        }
+        service_conf = {
+            "image": "busybox",
+            "container": {
+                "name": "example",
+                "hostname": "example",
+                "volumes": ["namevolume:/var/log"],
+                "dns_search": ["example"]
+            }
+        }
+        with open(controlfile, 'w') as f:
+            f.write(json.dumps(conf))
+        os.mkdir('{}/test'.format(temp_dir.name))
+        with open('{}/test/Controlfile'.format(temp_dir.name), 'w') as f:
+            f.write(json.dumps(foo_conf))
+        os.mkdir('{}/test/foo'.format(temp_dir.name))
+        with open('{}/test/foo/Controlfile'.format(temp_dir.name), 'w') as f:
+            f.write(json.dumps(service_conf))
