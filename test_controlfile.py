@@ -2,6 +2,7 @@
 """Test Controlfile discovery and normalization"""
 
 import json
+import os
 import tempfile
 import unittest
 
@@ -60,7 +61,9 @@ class ControlfileNormalizationTest(unittest.TestCase):
         }
         with open(controlfile, 'w') as f:
             f.write(json.dumps(conf))
-
+        os.mkdir('{}/test'.format(temp_dir.name))
+        with open('{}/test/Controlfile'.format(temp_dir.name), 'w') as f:
+            f.write(json.dumps(service_conf))
 
         ret = control.normalize_controlfiles(controlfile)
-
+        self.assertEqual(ret['services'][0], service_conf)
