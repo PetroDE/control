@@ -101,32 +101,64 @@ class InvalidControlfile(Exception):
     pass
 
 
-def normalize_controlfiles(controlfile_location='Controlfile'):
-    """
-    There's two types of Controlfiles. A multi-service file that allows some
-    meta-operations on top of the other kind of Controlfile. The second kind is
-    the single service Controlfile. Full Controlfiles can reference both kinds
-    files to load in more options for meta-services.
-    """
+class Controlfile:
+    """A holder for a normalized controlfile"""
+
     control = {
-        'services': []
+        'services': [
+            {
+                "service": "all",
+                "services": []
+            },
+            {
+                "service": "required",
+                "services": []
+            },
+            {
+                "service": "optional",
+                "services": []
+            }
+        ]
     }
-    # TODO make sure to test when there is no Controlfile and catch that error
-    try:
-        with open(controlfile_location, 'r') as controlfile:
-            data = json.load(controlfile)
-            if 'services' in data:
-                control.update(data)
-            else:
-                control['services'].append(data)
-    except json.decoder.JSONDecodeError as error:
-        logger.critical('Could not parse Controlfile as JSON: %s', error)
-        raise InvalidControlfile
-    for service in (s for s in control['services'] if 'controlfile' in s):
-        with open(service['controlfile'], 'r') as ctrlfile:
-            data = json.load(ctrlfile)
-            control['services'].append(data)
-    return control
+
+    def __init__(self, controlfile_location='Controlfile'):
+        """
+        There's two types of Controlfiles. A multi-service file that allows some
+        meta-operations on top of the other kind of Controlfile. The second kind is
+        the single service Controlfile. Full Controlfiles can reference both kinds
+        files to load in more options for meta-services.
+        """
+        self.logger = logging.getLogger('control.Controlfile')
+        # TODO make sure to test when there is no Controlfile and catch that error
+        try:
+            with open(controlfile_location, 'r') as controlfile:
+                data = json.load(controlfile)
+                if 'services' in data:
+                    self.control['services'].append(data.pop('services'))
+                    self.control.update(data)
+                else:
+                    self.control['services'].append(data)
+        except FileNotFoundError as error:
+            self.logger.critical('Controlfile does not exist: %s', error)
+            raise
+        except json.decoder.JSONDecodeError as error:
+            self.logger.critical('Could not parse Controlfile as JSON: %s', error)
+            raise InvalidControlfile
+        dirname = os.path.dirname(controlfile_location)
+        for service in (s for s in self.control['services'] if 'controlfile' in s):
+            file_location = '{}/{}'.format(dirname, service['controlfile'])
+            with open(file_location, 'r') as ctrlfile:
+                data = json.load(ctrlfile)
+                service.update(data)
+        # return self.control
+
+    def get_list_of_services(self):
+        """
+        Return a list of the services that have been discovered. This was
+        used to ensure that Controlfile discovery worked correctly in tests,
+        and then I decided it could conceivably be useful for Control.
+        """
+        return [s['service'] for s in self.control['services'] if 'service' in s]
 
 
 class Registry:

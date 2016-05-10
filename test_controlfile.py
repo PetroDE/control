@@ -34,9 +34,54 @@ class ControlfileNormalizationTest(unittest.TestCase):
         }
         with open(controlfile, 'w') as f:
             f.write(json.dumps(conf))
-        ret = control.normalize_controlfiles(controlfile_location=controlfile)
-        self.assertEqual(ret['services'][0], conf)
+        ctrlfile = control.Controlfile(controlfile)
+        self.assertEqual(ctrlfile.control['services'][0], conf)
         temp_dir.cleanup()
+
+    def test_generating_service_list(self):
+        """
+        Need to make sure that the service list is generated correctly even
+        if a service doesn't define a service name.
+        """
+        temp_dir = tempfile.TemporaryDirectory()
+        controlfile = '{}/Controlfile'.format(temp_dir.name)
+        conf = {
+            "services": [
+                {
+                    "service": "foo",
+                    "image": "busybox",
+                    "container": {
+                        "name": "foo",
+                        "hostname": "foo"
+                    }
+                },
+                {
+                    "service": "bar",
+                    "image": "busybox",
+                    "container": {
+                        "name": "bar",
+                        "hostname": "bar"
+                    }
+                },
+                {
+                    "service": "named",
+                    "services": ["bar", "baz"]
+                },
+                {
+                    "image": "busybox",
+                    "container": {
+                        "name": "baz"
+                    }
+                }
+            ]
+        }
+        with open(controlfile, 'w') as f:
+            f.write(json.dumps(conf))
+
+        ctrlfile = control.Controlfile(controlfile)
+        self.assertEqual(
+            ctrlfile.get_list_of_services(),
+            ["foo", "bar", "baz", "named", "required", "all", "optional"])
 
     def test_including_controlfiles(self):
         """
@@ -68,16 +113,20 @@ class ControlfileNormalizationTest(unittest.TestCase):
         os.mkdir('{}/test'.format(temp_dir.name))
         with open('{}/test/Controlfile'.format(temp_dir.name), 'w') as f:
             f.write(json.dumps(service_conf))
+        service_conf.update({"service": "test", "controlfile": "test/Controlfile"})
 
-        ret = control.normalize_controlfiles(controlfile)
-        self.assertEqual(ret['services'][0], service_conf)
+        ctrlfile = control.Controlfile(controlfile)
+        self.assertEqual(ctrlfile.control['services'][0], service_conf)
+        self.assertEqual(
+            ctrlfile.get_list_of_services(),
+            ['test'])
         temp_dir.cleanup()
 
-    @unittest.skip('fixing a prereq for this test')
+    @unittest.skip("this test doesn't demonstrate the behaviour I want yet")
     def test_nested_controlfile_discovery(self):
         """Reference a Controlfile that references other Controlfiles"""
         temp_dir = tempfile.TemporaryDirectory()
-        controlfile = '{}/Controlfile'.format(temp_dir.name)
+        controlfile_location = '{}/Controlfile'.format(temp_dir.name)
         conf = {
             "services": [
                 {
@@ -103,7 +152,7 @@ class ControlfileNormalizationTest(unittest.TestCase):
                 "dns_search": ["example"]
             }
         }
-        with open(controlfile, 'w') as f:
+        with open(controlfile_location, 'w') as f:
             f.write(json.dumps(conf))
         os.mkdir('{}/test'.format(temp_dir.name))
         with open('{}/test/Controlfile'.format(temp_dir.name), 'w') as f:
