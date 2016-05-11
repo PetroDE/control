@@ -123,13 +123,15 @@ class Controlfile:
 
     def __init__(self, controlfile_location='Controlfile'):
         """
-        There's two types of Controlfiles. A multi-service file that allows some
-        meta-operations on top of the other kind of Controlfile. The second kind is
-        the single service Controlfile. Full Controlfiles can reference both kinds
-        files to load in more options for meta-services.
+        There's two types of Controlfiles. A multi-service file that
+        allows some meta-operations on top of the other kind of
+        Controlfile. The second kind is the single service Controlfile.
+        Full Controlfiles can reference both kinds files to load in more
+        options for meta-services.
         """
         self.logger = logging.getLogger('control.Controlfile')
-        # TODO make sure to test when there is no Controlfile and catch that error
+        # TODO: make sure to test when there is no Controlfile and catch
+        #       that error
         try:
             with open(controlfile_location, 'r') as controlfile:
                 data = json.load(controlfile)
