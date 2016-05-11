@@ -9,17 +9,12 @@ import unittest
 import control
 
 
-class ControlfileNormalizationTest(unittest.TestCase):
-    """
-    Test different controlfile schemes to ensure they all layer in
-    correctly
-    """
-
-    def test_single_service_controlfile(self):
-        """Make sure that we don't break single service controlfiles"""
-        temp_dir = tempfile.TemporaryDirectory()
-        controlfile = '{}/Controlfile'.format(temp_dir.name)
-        conf = {
+class TestServicefile(unittest.TestCase):
+    """Test reading in a single service Controlfile"""
+    def setUp(self):
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.controlfile = '{}/Controlfile'.format(self.temp_dir.name)
+        self.conf = {
             "image": "busybox",
             "container": {
                 "name": "example",
@@ -32,20 +27,28 @@ class ControlfileNormalizationTest(unittest.TestCase):
                 ]
             }
         }
-        with open(controlfile, 'w') as f:
-            f.write(json.dumps(conf))
-        ctrlfile = control.Controlfile(controlfile)
-        self.assertEqual(ctrlfile.control['services'][0], conf)
-        temp_dir.cleanup()
+        with open(self.controlfile, 'w') as f:
+            f.write(json.dumps(self.conf))
 
-    def test_generating_service_list(self):
-        """
-        Need to make sure that the service list is generated correctly even
-        if a service doesn't define a service name.
-        """
-        temp_dir = tempfile.TemporaryDirectory()
-        controlfile = '{}/Controlfile'.format(temp_dir.name)
-        conf = {
+    def tearDown(self):
+        self.temp_dir.cleanup()
+
+    def test_single_service_controlfile(self):
+        """Make sure that we don't break single service controlfiles"""
+        ctrlfile = control.Controlfile(self.controlfile)
+        self.assertEqual(ctrlfile.control['services'][0], self.conf)
+        self.temp_dir.cleanup()
+
+
+class TestGeneratingServiceList(unittest.TestCase):
+    """
+    Make sure that the service list is generated correctly, when a
+    metaservice exists
+    """
+    def setUp(self):
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.controlfile = '{}/Controlfile'.format(self.temp_dir.name)
+        self.conf = {
             "services": [
                 {
                     "service": "foo",
@@ -75,10 +78,18 @@ class ControlfileNormalizationTest(unittest.TestCase):
                 }
             ]
         }
-        with open(controlfile, 'w') as f:
-            f.write(json.dumps(conf))
+        with open(self.controlfile, 'w') as f:
+            f.write(json.dumps(self.conf))
 
-        ctrlfile = control.Controlfile(controlfile)
+    def tearDown(self):
+        self.temp_dir.cleanup()
+
+    def test_generating_service_list(self):
+        """
+        Need to make sure that the service list is generated correctly even
+        if a service doesn't define a service name.
+        """
+        ctrlfile = control.Controlfile(self.controlfile)
         self.assertEqual(
             ctrlfile.get_list_of_services(),
             frozenset([
@@ -90,15 +101,13 @@ class ControlfileNormalizationTest(unittest.TestCase):
                 "all",
                 "optional"]))
 
-    def test_including_controlfiles(self):
-        """
-        Make sure that single level Controlfile inclusion works correctly,
-        it also checks if relative path includes are correctly dereferenced
-        from the Controlfile location.
-        """
-        temp_dir = tempfile.TemporaryDirectory()
-        controlfile = '{}/Controlfile'.format(temp_dir.name)
-        conf = {
+
+class TestIncludingControlfiles(unittest.TestCase):
+    """Make sure that controlfiles to a service are read in correctly"""
+    def setUp(self):
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.controlfile = '{}/Controlfile'.format(self.temp_dir.name)
+        self.conf = {
             "services": [
                 {
                     "service": "test",
@@ -106,7 +115,7 @@ class ControlfileNormalizationTest(unittest.TestCase):
                 }
             ]
         }
-        service_conf = {
+        self.service_conf = {
             "image": "busybox",
             "container": {
                 "name": "example",
@@ -115,26 +124,45 @@ class ControlfileNormalizationTest(unittest.TestCase):
                 "dns_search": ["example"]
             }
         }
-        with open(controlfile, 'w') as f:
-            f.write(json.dumps(conf))
-        os.mkdir('{}/test'.format(temp_dir.name))
-        with open('{}/test/Controlfile'.format(temp_dir.name), 'w') as f:
-            f.write(json.dumps(service_conf))
-        service_conf.update({"service": "test", "controlfile": "test/Controlfile"})
+        with open(self.controlfile, 'w') as f:
+            f.write(json.dumps(self.conf))
+        os.mkdir('{}/test'.format(self.temp_dir.name))
+        with open('{}/test/Controlfile'.format(self.temp_dir.name), 'w') as f:
+            f.write(json.dumps(self.service_conf))
+        self.service_conf.update({"service": "test", "controlfile": "test/Controlfile"})
 
-        ctrlfile = control.Controlfile(controlfile)
-        self.assertEqual(ctrlfile.control['services'][0], service_conf)
+    def tearDown(self):
+        self.temp_dir.cleanup()
+
+    def test_including_controlfiles(self):
+        """
+        Make sure that single level Controlfile inclusion works correctly,
+        it also checks if relative path includes are correctly dereferenced
+        from the Controlfile location.
+        """
+        ctrlfile = control.Controlfile(self.controlfile)
+        self.assertEqual(ctrlfile.control['services'][0], self.service_conf)
         self.assertEqual(
             ctrlfile.get_list_of_services(),
             frozenset(['test']))
-        temp_dir.cleanup()
 
-    @unittest.skip("this test doesn't demonstrate the behaviour I want yet")
-    def test_nested_controlfile_discovery(self):
-        """Reference a Controlfile that references other Controlfiles"""
-        temp_dir = tempfile.TemporaryDirectory()
-        controlfile_location = '{}/Controlfile'.format(temp_dir.name)
-        conf = {
+    @unittest.skip("Not Implemented")
+    def test_updated_relative_paths(self):
+        """
+        Volumes and controlfile references need to be updated when Controlfiles
+        are discovered and read in
+        """
+        # TODO: test this stuff
+
+
+class TestDeeplyNestedControlfiles(unittest.TestCase):
+    """
+    Make sure that many recursive inclusions are handled correctly
+    """
+    def setUp(self):
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.controlfile_location = '{}/Controlfile'.format(self.temp_dir.name)
+        self.conf = {
             "services": [
                 {
                     "service": "test",
@@ -142,7 +170,7 @@ class ControlfileNormalizationTest(unittest.TestCase):
                 }
             ]
         }
-        foo_conf = {
+        self.foo_conf = {
             "services": [
                 {
                     "service": "foo",
@@ -150,7 +178,7 @@ class ControlfileNormalizationTest(unittest.TestCase):
                 }
             ]
         }
-        service_conf = {
+        self.service_conf = {
             "image": "busybox",
             "container": {
                 "name": "example",
@@ -159,11 +187,18 @@ class ControlfileNormalizationTest(unittest.TestCase):
                 "dns_search": ["example"]
             }
         }
-        with open(controlfile_location, 'w') as f:
-            f.write(json.dumps(conf))
-        os.mkdir('{}/test'.format(temp_dir.name))
-        with open('{}/test/Controlfile'.format(temp_dir.name), 'w') as f:
-            f.write(json.dumps(foo_conf))
-        os.mkdir('{}/test/foo'.format(temp_dir.name))
-        with open('{}/test/foo/Controlfile'.format(temp_dir.name), 'w') as f:
-            f.write(json.dumps(service_conf))
+        with open(self.controlfile_location, 'w') as f:
+            f.write(json.dumps(self.conf))
+        os.mkdir('{}/test'.format(self.temp_dir.name))
+        with open('{}/test/Controlfile'.format(self.temp_dir.name), 'w') as f:
+            f.write(json.dumps(self.foo_conf))
+        os.mkdir('{}/test/foo'.format(self.temp_dir.name))
+        with open('{}/test/foo/Controlfile'.format(self.temp_dir.name), 'w') as f:
+            f.write(json.dumps(self.service_conf))
+
+    def tearDown(self):
+        self.temp_dir.cleanup()
+
+    @unittest.skip("this test doesn't demonstrate the behaviour I want yet")
+    def test_nested_controlfile(self):
+        """Reference a Controlfile that references other Controlfiles"""
