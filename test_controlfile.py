@@ -81,7 +81,14 @@ class ControlfileNormalizationTest(unittest.TestCase):
         ctrlfile = control.Controlfile(controlfile)
         self.assertEqual(
             ctrlfile.get_list_of_services(),
-            ["foo", "bar", "baz", "named", "required", "all", "optional"])
+            frozenset([
+                "foo",
+                "bar",
+                "baz",
+                "named",
+                "required",
+                "all",
+                "optional"]))
 
     def test_including_controlfiles(self):
         """
@@ -119,7 +126,7 @@ class ControlfileNormalizationTest(unittest.TestCase):
         self.assertEqual(ctrlfile.control['services'][0], service_conf)
         self.assertEqual(
             ctrlfile.get_list_of_services(),
-            ['test'])
+            frozenset(['test']))
         temp_dir.cleanup()
 
     @unittest.skip("this test doesn't demonstrate the behaviour I want yet")

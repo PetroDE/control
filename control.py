@@ -134,7 +134,6 @@ class Controlfile:
             with open(controlfile_location, 'r') as controlfile:
                 data = json.load(controlfile)
                 if 'services' in data:
-                    self.control['services'].append(data.pop('services'))
                     self.control.update(data)
                 else:
                     self.control['services'].append(data)
@@ -158,7 +157,8 @@ class Controlfile:
         used to ensure that Controlfile discovery worked correctly in tests,
         and then I decided it could conceivably be useful for Control.
         """
-        return [s['service'] for s in self.control['services'] if 'service' in s]
+        return frozenset(
+            [s['service'] for s in self.control['services'] if 'service' in s])
 
 
 class Registry:
