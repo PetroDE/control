@@ -151,6 +151,49 @@ class Controlfile:
                 service.update(data)
         # return self.control
 
+    def open_discovered_controlfile(self, location):
+        """
+        Open a file, discover what kind of Controlfile it is, and hand off
+        handling it to the correct function.
+
+        Any paths found to be relative will be expanded out to be full paths.
+        This way controlfile paths will be kept correct, and mount points will
+        map correctly.
+
+        There will be two handlers:
+        - Complex Controlfile: Has append rules, options for all containers in
+          the services list, a list of services that potentially references
+          other Complex or Leaf Controlfiles
+        - Leaf/Service Controlfile: defines only a single service
+        """
+
+    def push_service_into_list(self, service):
+        """
+        Given a service, push it into the list of services, and add an entry
+        in the metaservices that it belongs in.
+        """
+
+    @classmethod
+    def normalize_service(cls, service, **args):
+        """
+        Takes a service, and kwargs and applies the transforms to the service.
+
+        Allowed args:
+        - append: a dictionary of values that will be put at the end of the
+          key value in the service
+        - options: the key/value pair will be added to the service dict
+        Returns: a dict of the normalized service
+        """
+
+    @classmethod
+    def satisfy_nested_options(cls, layer_one, layer_two):
+        """
+        Merge two Controlfile options segments for nested Controlfiles.
+
+        - Merges appends by having "{{layer_two}}{{layer_one}}"
+        - Merges option additions with layer_one.push(layer_two)
+        """
+
     def get_list_of_services(self):
         """
         Return a list of the services that have been discovered. This was
