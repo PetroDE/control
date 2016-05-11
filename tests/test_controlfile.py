@@ -6,7 +6,7 @@ import os
 import tempfile
 import unittest
 
-import control
+from .context import control
 
 
 class TestServicefile(unittest.TestCase):
@@ -202,3 +202,6 @@ class TestDeeplyNestedControlfiles(unittest.TestCase):
     @unittest.skip("this test doesn't demonstrate the behaviour I want yet")
     def test_nested_controlfile(self):
         """Reference a Controlfile that references other Controlfiles"""
+
+if __name__ == '__main__':
+    unittest.main()

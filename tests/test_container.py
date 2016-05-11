@@ -6,7 +6,7 @@ import random
 import unittest
 import docker
 
-import control
+from .context import control
 
 
 class CreateContainer(unittest.TestCase):

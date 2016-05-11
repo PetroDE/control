@@ -6,7 +6,7 @@ import tempfile
 import unittest
 import docker
 
-import control
+from .context import control
 
 
 class RegistryWrongCert(unittest.TestCase):

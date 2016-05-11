@@ -3,7 +3,7 @@
 
 import unittest
 
-import control
+from .context import control
 
 
 class RepositoryTest(unittest.TestCase):
