@@ -195,6 +195,19 @@ class Controlfile:
         - Merges appends by having "{{layer_two}}{{layer_one}}"
         - Merges option additions with layer_one.push(layer_two)
         """
+        def append(left, right):
+            return '{}{}'.format(left, right)
+
+        merged = copy(layer_one)
+        if 'append' in layer_one or 'append' in layer_two:
+            if 'append' not in merged:
+                merged['append'] = {}
+            for key in union(set(layer_one.get('append', {}).keys()),
+                    set(layer_two.get('append', {}))):
+                merged['append'][key] = append(
+                    merged.get('append', {}).get(key, ''),
+                    layer_two.get('append', {}).get(key, ''))
+        # TODO: Also do prepend, and general options
 
     def get_list_of_services(self):
         """
