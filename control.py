@@ -33,6 +33,7 @@ TODO: handle ^C without printing a stack trace, like normal people MOM!
 
 import argparse
 import base64
+import copy
 import json
 import logging
 import os
@@ -105,20 +106,17 @@ class Controlfile:
     """A holder for a normalized controlfile"""
 
     control = {
-        'services': [
-            {
-                "service": "all",
+        'services': {
+            "all": {
                 "services": []
             },
-            {
-                "service": "required",
+            "required": {
                 "services": []
             },
-            {
-                "service": "optional",
+            "optional": {
                 "services": []
             }
-        ]
+        }
     }
 
     def __init__(self, controlfile_location='Controlfile'):
@@ -188,7 +186,7 @@ class Controlfile:
         """
 
     @classmethod
-    def satisfy_nested_options(cls, layer_one, layer_two):
+    def satisfy_nested_options(cls, outer, inner):
         """
         Merge two Controlfile options segments for nested Controlfiles.
 
@@ -196,17 +194,51 @@ class Controlfile:
         - Merges option additions with layer_one.push(layer_two)
         """
         def append(left, right):
+            """append right onto left"""
             return '{}{}'.format(left, right)
 
-        merged = copy(layer_one)
-        if 'append' in layer_one or 'append' in layer_two:
-            if 'append' not in merged:
-                merged['append'] = {}
-            for key in union(set(layer_one.get('append', {}).keys()),
-                    set(layer_two.get('append', {}))):
-                merged['append'][key] = append(
-                    merged.get('append', {}).get(key, ''),
-                    layer_two.get('append', {}).get(key, ''))
+        def prepend(left, right):
+            """Prefix right before left"""
+            return '{}{}'.format(right, left)
+
+        def union(left, right):
+            """Join two lists"""
+            return list(set(left) | set(right))
+
+        merged = {}
+        for key in set(outer.keys()) | set(inner.keys()):
+            # ops = set(outer[key].keys()) | set(inner[key].keys())
+            val = {}
+            # apply outer suffix and prefix to the inner union
+            inner_union = [prepend(
+                append(
+                    x,
+                    outer.get(key, {}).get('suffix', '')),
+                outer.get(key, {}).get('prefix', ''))
+                for x in inner
+                .get(key, {})
+                .get('union', [])]
+            if inner_union != []:
+                val['union'] = set(inner_union) | set(outer.get(key, {}).get('union', []))
+            suffix = append(inner.get(key, {}).get('suffix', ''),
+                            outer.get(key, {}).get('suffix', ''))
+            if suffix != '':
+                val['suffix'] = suffix
+            prefix = prepend(inner.get(key, {}).get('prefix', ''),
+                             outer.get(key, {}).get('prefix', ''))
+            if prefix != '':
+                val['prefix'] = prefix
+            merged[key] = val
+        return merged
+
+        # if 'append' in outer or 'append' in inner:
+        #     if 'append' not in merged:
+        #         merged['append'] = {}
+        #     for key in set(outer.get('append', {}).keys()).union(
+        #             set(inner.get('append', {}))):
+        #         merged['append'][key] = append(
+        #             merged.get('append', {}).get(key, ''),
+        #             inner.get('append', {}).get(key, ''))
         # TODO: Also do prepend, and general options
 
     def get_list_of_services(self):

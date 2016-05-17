@@ -36,7 +36,7 @@ class TestServicefile(unittest.TestCase):
     def test_single_service_controlfile(self):
         """Make sure that we don't break single service controlfiles"""
         ctrlfile = control.Controlfile(self.controlfile)
-        self.assertEqual(ctrlfile.control['services'][0], self.conf)
+        self.assertEqual(ctrlfile.control['services']['example'], self.conf)
         self.temp_dir.cleanup()
 
 
