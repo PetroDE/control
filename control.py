@@ -207,27 +207,31 @@ class Controlfile:
 
         merged = {}
         for key in set(outer.keys()) | set(inner.keys()):
-            # ops = set(outer[key].keys()) | set(inner[key].keys())
+            ops = set(outer[key].keys()) | set(inner[key].keys())
             val = {}
             # apply outer suffix and prefix to the inner union
-            inner_union = [prepend(
-                append(
-                    x,
-                    outer.get(key, {}).get('suffix', '')),
-                outer.get(key, {}).get('prefix', ''))
-                for x in inner
-                .get(key, {})
-                .get('union', [])]
-            if inner_union != []:
-                val['union'] = set(inner_union) | set(outer.get(key, {}).get('union', []))
-            suffix = append(inner.get(key, {}).get('suffix', ''),
-                            outer.get(key, {}).get('suffix', ''))
-            if suffix != '':
-                val['suffix'] = suffix
-            prefix = prepend(inner.get(key, {}).get('prefix', ''),
-                             outer.get(key, {}).get('prefix', ''))
-            if prefix != '':
-                val['prefix'] = prefix
+            if 'union' in ops:
+                inner_union = [
+                    prepend(
+                        append(
+                            x,
+                            outer.get(key, {}).get('suffix', '')),
+                        outer.get(key, {}).get('prefix', ''))
+                    for x in inner
+                    .get(key, {})
+                    .get('union', [])]
+                if inner_union != []:
+                    val['union'] = set(inner_union) | set(outer.get(key, {}).get('union', []))
+            if 'suffix' in ops:
+                suffix = append(inner.get(key, {}).get('suffix', ''),
+                                outer.get(key, {}).get('suffix', ''))
+                if suffix != '':
+                    val['suffix'] = suffix
+            if 'prefix' in ops:
+                prefix = prepend(inner.get(key, {}).get('prefix', ''),
+                                 outer.get(key, {}).get('prefix', ''))
+                if prefix != '':
+                    val['prefix'] = prefix
             merged[key] = val
         return merged
 
