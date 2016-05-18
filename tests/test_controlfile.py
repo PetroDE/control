@@ -36,8 +36,8 @@ class TestServicefile(unittest.TestCase):
     def test_single_service_controlfile(self):
         """Make sure that we don't break single service controlfiles"""
         ctrlfile = control.Controlfile(self.controlfile)
+        self.assertIn('example', ctrlfile.control['services'])
         self.assertEqual(ctrlfile.control['services']['example'], self.conf)
-        self.temp_dir.cleanup()
 
 
 class TestGeneratingServiceList(unittest.TestCase):
@@ -72,6 +72,7 @@ class TestGeneratingServiceList(unittest.TestCase):
                 },
                 {
                     "image": "busybox",
+                    "required": False,
                     "container": {
                         "name": "baz"
                     }
@@ -100,6 +101,22 @@ class TestGeneratingServiceList(unittest.TestCase):
                 "required",
                 "all",
                 "optional"]))
+
+    def test_optional_services(self):
+        """
+        Make sure that containers that aren't required to be started are put
+        in the optional services list.
+        """
+        ctrlfile = control.Controlfile(self.controlfile)
+        self.assertIn(
+            'baz',
+            ctrlfile.control['services']['all'])
+        self.assertIn(
+            'baz',
+            ctrlfile.control['services']['optional'])
+        self.assertNotIn(
+            'baz',
+            ctrlfile.control['services']['required'])
 
 
 class TestIncludingControlfiles(unittest.TestCase):

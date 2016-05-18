@@ -33,7 +33,6 @@ TODO: handle ^C without printing a stack trace, like normal people MOM!
 
 import argparse
 import base64
-import copy
 import json
 import logging
 import os
@@ -136,7 +135,18 @@ class Controlfile:
                 if 'services' in data:
                     self.control.update(data)
                 else:
-                    self.control['services'].append(data)
+                    if 'service' in data:
+                        service_name = data['service']
+                    elif 'container' in data and 'name' in data['container']:
+                        service_name = data['container']['name']
+                    elif 'container' in data and 'hostname' in data['container']:
+                        service_name = data['container']['hostname']
+                    else:
+                        raise NameMissingFromService
+                    self.control['services'][service_name] = data
+                    self.control['services']['all']['services'].append(service_name)
+                    # TODO check if the service is in fact required
+                    self.control['services']['required']['services'].append(service_name)
         except FileNotFoundError as error:
             self.logger.critical('Controlfile does not exist: %s', error)
             raise
@@ -207,7 +217,7 @@ class Controlfile:
 
         merged = {}
         for key in set(outer.keys()) | set(inner.keys()):
-            ops = set(outer[key].keys()) | set(inner[key].keys())
+            ops = set(outer.get(key, {}).keys()) | set(inner.get(key, {}).keys())
             val = {}
             # apply outer suffix and prefix to the inner union
             if 'union' in ops:
