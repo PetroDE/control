@@ -18,10 +18,12 @@ class TestNestedOptions(unittest.TestCase):
             "dns_search": {
                 "suffix": ".outer",
                 "union": ["outer"],
-            }
+            },
+            "volumes": {"union": ["logdir:/var/log"]}
         }
         self.inner_options = {
             "name": {"suffix": ".inner"},
+            "hostname": {"suffix": ".inner"},
             "env": {"prefix": "INNER_"},
             "dns_search": {"union": ["inner"]}
         }
@@ -43,6 +45,9 @@ class TestNestedOptions(unittest.TestCase):
         self.assertEqual(
             set(self.ret['dns_search']['union']),
             {"inner.outer", "outer"})
+        self.assertEqual(
+            self.ret['hostname']['suffix'],
+            '.inner')
 
     def test_prefix(self):
         """Make sure prepend works in the other direction from append"""
