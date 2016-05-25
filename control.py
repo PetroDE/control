@@ -105,20 +105,6 @@ class InvalidControlfile(Exception):
 class Controlfile:
     """A holder for a normalized controlfile"""
 
-    control = {
-        'services': {
-            "all": {
-                "services": []
-            },
-            "required": {
-                "services": []
-            },
-            "optional": {
-                "services": []
-            }
-        }
-    }
-
     operations = {
         'suffix': lambda x, y: '{}{}'.format(x, y),
         'prefix': lambda x, y: '{}{}'.format(y, x),
@@ -133,9 +119,22 @@ class Controlfile:
         Full Controlfiles can reference both kinds files to load in more
         options for meta-services.
         """
+        self.services = {
+            "all": {
+                "services": []
+            },
+            "required": {
+                "services": []
+            },
+            "optional": {
+                "services": []
+            }
+        }
         self.logger = logging.getLogger('control.Controlfile')
+
         # TODO: make sure to test when there is no Controlfile and catch
         #       that error
+
         try:
             with open(controlfile_location, 'r') as controlfile:
                 data = json.load(controlfile)
@@ -166,7 +165,6 @@ class Controlfile:
             with open(file_location, 'r') as ctrlfile:
                 data = json.load(ctrlfile)
                 service.update(data)
-        # return self.control
 
     def open_discovered_controlfile(self, location):
         """
