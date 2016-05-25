@@ -27,12 +27,12 @@ class TestNestedOptions(unittest.TestCase):
             "env": {"prefix": "INNER_"},
             "dns_search": {"union": ["inner"]}
         }
-        self.ret = control.Controlfile.satisfy_nested_options(
-            self.outer_options,
-            self.inner_options)
 
     def test_suffix(self):
         """Make sure that appended options are appended in the right order"""
+        ret = control.Controlfile.satisfy_nested_options(
+            self.outer_options,
+            self.inner_options)
         self.assertEqual(
             self.outer_options['name']['suffix'],
             ".outer")
@@ -40,17 +40,20 @@ class TestNestedOptions(unittest.TestCase):
             self.inner_options['name']['suffix'],
             ".inner")
         self.assertEqual(
-            self.ret['name']['suffix'],
+            ret['name']['suffix'],
             ".inner.outer")
         self.assertEqual(
-            set(self.ret['dns_search']['union']),
+            set(ret['dns_search']['union']),
             {"inner.outer", "outer"})
         self.assertEqual(
-            self.ret['hostname']['suffix'],
+            ret['hostname']['suffix'],
             '.inner')
 
     def test_prefix(self):
         """Make sure prepend works in the other direction from append"""
+        ret = control.Controlfile.satisfy_nested_options(
+            self.outer_options,
+            self.inner_options)
         self.assertEqual(
             self.outer_options['env']['prefix'],
             "OUTER_")
@@ -58,11 +61,14 @@ class TestNestedOptions(unittest.TestCase):
             self.inner_options['env']['prefix'],
             "INNER_")
         self.assertEqual(
-            self.ret['env']['prefix'],
+            ret['env']['prefix'],
             "OUTER_INNER_")
 
     def test_union(self):
         """Make sure that we end up with a union of the two lists"""
+        ret = control.Controlfile.satisfy_nested_options(
+            self.outer_options,
+            self.inner_options)
         self.assertEqual(
             self.outer_options['dns_search']['union'],
             ["outer"])
@@ -70,5 +76,5 @@ class TestNestedOptions(unittest.TestCase):
             self.inner_options['dns_search']['union'],
             ["inner"])
         self.assertEqual(
-            set(self.ret['dns_search']['union']),
+            set(ret['dns_search']['union']),
             set(['outer', 'inner.outer']))

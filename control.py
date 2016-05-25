@@ -33,6 +33,7 @@ TODO: handle ^C without printing a stack trace, like normal people MOM!
 
 import argparse
 import base64
+import copy
 import json
 import logging
 import os
@@ -118,6 +119,12 @@ class Controlfile:
         }
     }
 
+    operations = {
+        'suffix': lambda x, y: '{}{}'.format(x, y),
+        'prefix': lambda x, y: '{}{}'.format(y, x),
+        'union': lambda x, y: set(x) | set(y)
+    }
+
     def __init__(self, controlfile_location='Controlfile'):
         """
         There's two types of Controlfiles. A multi-service file that
@@ -183,17 +190,59 @@ class Controlfile:
         in the metaservices that it belongs in.
         """
 
+    # TODO: eventually the global options will go away, switch this back to options then
     @classmethod
-    def normalize_service(cls, service, **args):
+    def normalize_service(cls, service, opers={}):
         """
-        Takes a service, and kwargs and applies the transforms to the service.
+        Takes a service, and options and applies the transforms to the service.
+
+        Without options these are the defaults for a service:
+        {
+            "name": # REQUIRED,
+            "service": "{name}",
+            "hostname": "{name}",
+        }
 
         Allowed args:
-        - append: a dictionary of values that will be put at the end of the
-          key value in the service
-        - options: the key/value pair will be added to the service dict
+        - service: must be a dict that defines a service in the form the
+          Controlfile service
+        - options: a dict of options that define transforms to a service.
+          The format must conform to a Controlfile metaservice options
+          definition
         Returns: a dict of the normalized service
         """
+        if 'name' not in service and 'service' not in service:
+            raise NameMissingFromService(service)
+        new_service = copy.deepcopy(service)
+        if 'name' not in new_service:
+            new_service['name'] = new_service['service']
+        if 'service' not in new_service:
+            new_service['service'] = new_service['name']
+        if 'hostname' not in new_service:
+            new_service['hostname'] = new_service['name']
+
+        # We check that the Controlfile only specifies operations we support,
+        # that way we aren't trusting a random user to accidentally get a
+        # random string to get eval'd.
+        for key, ops in opers.items():
+            for op, rightside in (
+                    (op, rightside)
+                    for op, rightside in ops.items() if op in cls.operations.keys()):
+                logger.debug("service %s %sing %s with %s. %s",
+                             new_service['service'],
+                             op,
+                             key,
+                             rightside,
+                             new_service[key])
+                new_service[key] = cls.operations[op](new_service[key], rightside)
+
+        # for key, op, rightside in (
+        #         (
+        #             (key, op, rightside)
+        #             for op, rightside in ops.items() if op in cls.operations.keys())
+        #         for key, ops in opers.items()):
+        #     new_service[key] = cls.operations[op](new_service[key], rightside)
+        return new_service
 
     @classmethod
     def satisfy_nested_options(cls, outer, inner):
@@ -211,10 +260,6 @@ class Controlfile:
             """Prefix right before left"""
             return '{}{}'.format(right, left)
 
-        def union(left, right):
-            """Join two lists"""
-            return list(set(left) | set(right))
-
         merged = {}
         for key in set(outer.keys()) | set(inner.keys()):
             ops = set(outer.get(key, {}).keys()) | set(inner.get(key, {}).keys())
@@ -227,9 +272,7 @@ class Controlfile:
                             x,
                             outer.get(key, {}).get('suffix', '')),
                         outer.get(key, {}).get('prefix', ''))
-                    for x in inner
-                    .get(key, {})
-                    .get('union', [])]
+                    for x in inner.get(key, {}).get('union', [])]
                 if inner_union != []:
                     val['union'] = set(inner_union) | set(outer.get(key, {}).get('union', []))
             if 'suffix' in ops:
