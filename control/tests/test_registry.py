@@ -6,7 +6,8 @@ import tempfile
 import unittest
 import docker
 
-from .context import control
+from control.container import DoesNotExist
+from control.registry import Registry
 
 
 class RegistryWrongCert(unittest.TestCase):
@@ -34,8 +35,8 @@ class RegistryWrongCert(unittest.TestCase):
         cert_file = open(cert_file_name, 'w')
         cert_file.close()
         os.chmod(cert_file_name, 0o000)
-        with self.assertRaises(control.Container.DoesNotExist):
-            control.Registry('docker.petrode.com', certdir=self.temp_dir.name)
+        with self.assertRaises(DoesNotExist):
+            Registry('docker.petrode.com', certdir=self.temp_dir.name)
 
     @unittest.skip("Registry crashes the program")
     def test_wrong_cert_in_dir(self):
@@ -85,8 +86,8 @@ class RegistryWrongCert(unittest.TestCase):
             """)
         cert_file.close()
         os.chmod(cert_file_name, 0o444)
-        with self.assertRaises(control.Container.DoesNotExist):
-            control.Registry('docker.petrode.com', certdir=self.temp_dir.name)
+        with self.assertRaises(DoesNotExist):
+            Registry('docker.petrode.com', certdir=self.temp_dir.name)
 
 
 class RegistryPullRepoData(unittest.TestCase):
