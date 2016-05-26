@@ -7,7 +7,9 @@ build: $(EXE)
 
 $(EXE): $(PYFILES)
 	@-rm $(EXE) controli.zip
-	cd control && zip -R ../controli.zip **.py
+	cp control/__main__.py .
+	zip -r controli.zip __main__.py control
+	rm __main__.py
 	echo "#!/usr/bin/env python3" > $(EXE)
 	cat controli.zip >> $(EXE)
 	-rm controli.zip
