@@ -6,7 +6,7 @@ import random
 import unittest
 import docker
 
-from .context import control
+from control.container import Container
 
 
 class CreateContainer(unittest.TestCase):
@@ -42,7 +42,7 @@ class CreateContainer(unittest.TestCase):
             "name": self.container_name,
             "hostname": "happy_path"
         }
-        container = control.Container(self.image, self.conf)
+        container = Container(self.image, self.conf)
         self.assertEqual(container.expected_timeout, 10)
         self.assertEqual(container.conf['name'], self.container_name)
         self.assertEqual(container.conf['hostname'], "happy_path")
@@ -55,7 +55,7 @@ class CreateContainer(unittest.TestCase):
             "name": self.container_name,
             "expected_timeout": 3
         }
-        container = control.Container(self.image, self.conf)
+        container = Container(self.image, self.conf)
         self.assertEqual(container.expected_timeout, 3)
         self.assertEqual(container.conf['name'], self.container_name)
         self.assertEqual(
@@ -79,7 +79,7 @@ class CreateContainer(unittest.TestCase):
                 "PASSWORD=password",
             ]
         }
-        container = control.Container(self.image, self.conf)
+        container = Container(self.image, self.conf)
         conf_copy = container.get_container_options()
         self.assertEqual(conf_copy['environment'][0], self.conf['environment'][0])
 
@@ -95,7 +95,7 @@ class CreateContainer(unittest.TestCase):
                 "/mnt/usrbin:/usr/bin",
             ]
         }
-        container = control.Container(image, conf)
+        container = Container(image, conf)
         conf_copy = container.get_container_options()
         self.assertEqual(conf_copy['image'], image)
         self.assertEqual(conf_copy['host_config']['Binds'][0], conf['volumes'][0])
@@ -111,7 +111,7 @@ class CreateContainer(unittest.TestCase):
                 "example"
             ]
         }
-        container = control.Container(self.image, self.conf)
+        container = Container(self.image, self.conf)
         conf_copy = container.get_container_options()
         self.assertEqual(
             conf_copy['host_config']['dns_search'][0],
@@ -134,7 +134,7 @@ class CreateContainer(unittest.TestCase):
             ]
         }
         os.environ['COLLECTIVE'] = 'example'
-        container = control.Container(self.image, self.conf)
+        container = Container(self.image, self.conf)
         conf_copy = container.get_container_options()
         self.assertEqual(
             conf_copy['name'],

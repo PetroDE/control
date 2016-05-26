@@ -5,7 +5,7 @@ import random
 import unittest
 import docker
 
-from .context import control
+from control.container import Container
 
 
 class VolumeCreationTests(unittest.TestCase):
@@ -47,7 +47,7 @@ class VolumeCreationTests(unittest.TestCase):
             "hostname": "busybox",
             "volumes": ["/var"]
         }
-        container = control.Container(self.image, self.conf).create()
+        container = Container(self.image, self.conf).create()
         container.start()
         self.assertEqual(len(container.inspect['Mounts']), 1)
         self.assertEqual(len(container.inspect['Mounts'][0]['Name']), 65)
@@ -68,7 +68,7 @@ class VolumeCreationTests(unittest.TestCase):
             "hostname": "busybox",
             "volumes": ["{}:/var".format(volume_name)]
         }
-        container = control.Container(self.image, self.conf).create()
+        container = Container(self.image, self.conf).create()
         container.start()
         self.assertEqual(len(container.inspect['Mounts']), 1)
         self.assertEqual(len(container.inspect['Mounts'][0]['Name']), len(volume_name))
@@ -90,7 +90,7 @@ class VolumeCreationTests(unittest.TestCase):
             "hostname": "busybox",
             "volumes": ["{}:/var".format(temp_dir.name)]
         }
-        container = control.Container(self.image, self.conf).create()
+        container = Container(self.image, self.conf).create()
         container.start()
         self.assertEqual(len(container.inspect['Mounts']), 1)
         self.assertEqual(container.inspect['Mounts'][0]['Destination'], '/var')
