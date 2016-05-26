@@ -68,7 +68,7 @@ class NotRunning(ContainerException):
     pass
 
 
-class Container(object):
+class Container:
     """
     Container is a data structure for a container. Controlfiles that specify
     containers will be read into this structure and have defaults applied where
@@ -81,6 +81,19 @@ class Container(object):
         'image': '',
         'hostname': None,
     }
+
+    def __init__(self, image, conf):
+        try:
+            self.expected_timeout = conf.pop('expected_timeout')
+        except KeyError:
+            pass
+        try:
+            if 'hostname' not in conf:
+                conf['hostname'] = conf['name']
+        except KeyError:
+            pass
+        self.conf.update(conf)
+        self.conf['image'] = image
 
     def get_container_options(self):
         conf_copy = self.conf.copy()
