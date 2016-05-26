@@ -5,6 +5,13 @@ import os
 
 module_logger = logging.getLogger('control.controlfile')
 
+operations = {
+    'suffix': lambda x, y: '{}{}'.format(x, y),
+    'prefix': lambda x, y: '{}{}'.format(y, x),
+    'union': lambda x, y: set(x) | set(y)
+}
+
+
 class NameMissingFromService(Exception):
     pass
 
@@ -15,12 +22,6 @@ class InvalidControlfile(Exception):
 
 class Controlfile:
     """A holder for a normalized controlfile"""
-
-    operations = {
-        'suffix': lambda x, y: '{}{}'.format(x, y),
-        'prefix': lambda x, y: '{}{}'.format(y, x),
-        'union': lambda x, y: set(x) | set(y)
-    }
 
     def __init__(self, controlfile_location='Controlfile'):
         """
@@ -110,7 +111,7 @@ class Controlfile:
 
 
 # TODO: eventually the global options will go away, switch this back to options then
-def normalize_service(cls, service, opers={}):
+def normalize_service(service, opers={}):
     """
     Takes a service, and options and applies the transforms to the service.
 
@@ -145,14 +146,14 @@ def normalize_service(cls, service, opers={}):
     for key, ops in opers.items():
         for op, rightside in (
                 (op, rightside)
-                for op, rightside in ops.items() if op in cls.operations.keys()):
+                for op, rightside in ops.items() if op in operations.keys()):
             module_logger.debug("service %s %sing %s with %s. %s",
                                 new_service['service'],
                                 op,
                                 key,
                                 rightside,
                                 new_service[key])
-            new_service[key] = cls.operations[op](new_service[key], rightside)
+            new_service[key] = operations[op](new_service[key], rightside)
 
     # for key, op, rightside in (
     #         (
@@ -163,7 +164,7 @@ def normalize_service(cls, service, opers={}):
     return new_service
 
 
-def satisfy_nested_options(cls, outer, inner):
+def satisfy_nested_options(outer, inner):
     """
     Merge two Controlfile options segments for nested Controlfiles.
 

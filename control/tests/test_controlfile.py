@@ -6,7 +6,7 @@ import os
 import tempfile
 import unittest
 
-from .context import control
+from control.controlfile import Controlfile
 
 
 class TestServicefile(unittest.TestCase):
@@ -35,7 +35,7 @@ class TestServicefile(unittest.TestCase):
 
     def test_single_service_controlfile(self):
         """Make sure that we don't break single service controlfiles"""
-        ctrlfile = control.Controlfile(self.controlfile)
+        ctrlfile = Controlfile(self.controlfile)
         self.assertIn('example', ctrlfile.control['services'])
         self.assertEqual(ctrlfile.control['services']['example'], self.conf)
 
@@ -90,7 +90,7 @@ class TestGeneratingServiceList(unittest.TestCase):
         Need to make sure that the service list is generated correctly even
         if a service doesn't define a service name.
         """
-        ctrlfile = control.Controlfile(self.controlfile)
+        ctrlfile = Controlfile(self.controlfile)
         self.assertEqual(
             ctrlfile.get_list_of_services(),
             frozenset([
@@ -107,7 +107,7 @@ class TestGeneratingServiceList(unittest.TestCase):
         Make sure that containers that aren't required to be started are put
         in the optional services list.
         """
-        ctrlfile = control.Controlfile(self.controlfile)
+        ctrlfile = Controlfile(self.controlfile)
         self.assertIn(
             'baz',
             ctrlfile.control['services']['all'])
@@ -157,7 +157,7 @@ class TestIncludingControlfiles(unittest.TestCase):
         it also checks if relative path includes are correctly dereferenced
         from the Controlfile location.
         """
-        ctrlfile = control.Controlfile(self.controlfile)
+        ctrlfile = Controlfile(self.controlfile)
         self.assertEqual(ctrlfile.control['services'][0], self.service_conf)
         self.assertEqual(
             ctrlfile.get_list_of_services(),

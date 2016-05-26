@@ -2,7 +2,7 @@
 
 import unittest
 
-from .context import control
+from control.controlfile import satisfy_nested_options
 
 
 class TestNestedOptions(unittest.TestCase):
@@ -30,7 +30,7 @@ class TestNestedOptions(unittest.TestCase):
 
     def test_suffix(self):
         """Make sure that appended options are appended in the right order"""
-        ret = control.Controlfile.satisfy_nested_options(
+        ret = satisfy_nested_options(
             self.outer_options,
             self.inner_options)
         self.assertEqual(
@@ -51,7 +51,7 @@ class TestNestedOptions(unittest.TestCase):
 
     def test_prefix(self):
         """Make sure prepend works in the other direction from append"""
-        ret = control.Controlfile.satisfy_nested_options(
+        ret = satisfy_nested_options(
             self.outer_options,
             self.inner_options)
         self.assertEqual(
@@ -66,7 +66,7 @@ class TestNestedOptions(unittest.TestCase):
 
     def test_union(self):
         """Make sure that we end up with a union of the two lists"""
-        ret = control.Controlfile.satisfy_nested_options(
+        ret = satisfy_nested_options(
             self.outer_options,
             self.inner_options)
         self.assertEqual(

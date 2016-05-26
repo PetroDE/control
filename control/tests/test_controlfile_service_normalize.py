@@ -4,7 +4,7 @@ import unittest
 import logging
 import sys
 
-from .context import control
+from control.controlfile import normalize_service
 
 
 class TestNormalization(unittest.TestCase):
@@ -23,7 +23,7 @@ class TestNormalization(unittest.TestCase):
         specifies a container name
         """
         service = {"name": "example"}
-        ret = control.Controlfile.normalize_service(service)
+        ret = normalize_service(service)
         self.assertEqual(ret['name'], "example")
         self.assertIn('service', ret)
         self.assertEqual(ret['service'], "example")
@@ -38,12 +38,12 @@ class TestNormalization(unittest.TestCase):
             "hostname": "service"
         }
         options = {"name": {"prefix": "1."}}
-        ret = control.Controlfile.normalize_service(service, options)
+        ret = normalize_service(service, options)
         self.assertEqual(ret['name'], "1.example")
         self.assertEqual(ret['service'], "example")
         self.assertEqual(ret['hostname'], "service")
         del service['service']
-        ret = control.Controlfile.normalize_service(service, options)
+        ret = normalize_service(service, options)
         self.assertEqual(ret['name'], "1.example")
         self.assertEqual(ret['service'], "example",
                          "service name is affected by name prefix")
@@ -57,12 +57,12 @@ class TestNormalization(unittest.TestCase):
             "hostname": "service"
         }
         options = {"name": {"suffix": ".company"}}
-        ret = control.Controlfile.normalize_service(service, options)
+        ret = normalize_service(service, options)
         self.assertEqual(ret['name'], "example.company")
         self.assertEqual(ret['service'], "example")
         self.assertEqual(ret['hostname'], "service")
         del service['service']
-        ret = control.Controlfile.normalize_service(service, options)
+        ret = normalize_service(service, options)
         self.assertEqual(ret['name'], "example.company")
         self.assertEqual(ret['service'], "example",
                          "service name is affected by name suffix")
