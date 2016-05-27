@@ -31,7 +31,7 @@ TODO: handle ^C without printing a stack trace, like normal people MOM!
 
 import argparse
 import json
-# import logging
+import logging
 import os
 import sys
 import dateutil.parser as dup
@@ -40,10 +40,14 @@ import docker
 
 from control.options import options
 from control.dclient import dclient
+from control.shittylogging import err, log
+from control.container import Container, CreatedContainer
+from control.controlfile import Controlfile
 from control.registry import Registry
 from control.repository import Repository
-from control.container import Container, CreatedContainer
-from control.shittylogging import err, log
+
+module_logger = logging.getLogger('control')
+module_logger.setLevel(logging.DEBUG)
 
 
 def image_is_newer(base):  # TODO: finish
@@ -244,6 +248,8 @@ def main(args):
     from requests.packages.urllib3.exceptions import InsecureRequestWarning
     requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 
+    console_loghandler = logging.StreamHandler()
+
     # If you set a value that has a default, set it up above, then you must
     # reference that default here, otherwise it will be clobbered
     parser = argparse.ArgumentParser(description='Control the building and running of images and containers')
@@ -302,9 +308,24 @@ def main(args):
     restart_parser.add_argument('-w', '--wipe', action='store_true', help='Make sure that volumes are empty after stopping. May require sudo. THIS IS EXTREMELY DANGEROUS')
     restart_parser.add_argument('--no-volumes', action='store_true', help='override the volumes mentioned in the Controlfile')
     restart_parser.set_defaults(func=restart)
-    parser.parse_args(namespace=options)
+    parser.parse_args(args, namespace=options)
+
+    if options.debug:
+        console_loghandler.setLevel(logging.DEBUG)
+    else:
+        console_loghandler.setLevel(logging.INFO)
+    module_logger.addHandler(console_loghandler)
+    module_logger.debug("switching to debug logging")
 
     # Read in a Controlfile if one exists
+    ctrlfile_location = options.dockerfile
+    try:
+        ctrl = Controlfile(ctrlfile_location)
+    except NotImplemented:
+        module_logger.info("That's it")
+    else:
+        module_logger.info(ctrl.services)
+
     if os.path.isfile('Controlfile'):
         with open('Controlfile', 'r') as f:
             try:
