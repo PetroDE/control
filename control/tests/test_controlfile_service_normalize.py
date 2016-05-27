@@ -23,10 +23,9 @@ class TestNormalization(unittest.TestCase):
         specifies a container name
         """
         service = {"name": "example"}
-        ret = normalize_service(service)
+        name, ret = normalize_service(service)
         self.assertEqual(ret['name'], "example")
-        self.assertIn('service', ret)
-        self.assertEqual(ret['service'], "example")
+        self.assertEqual(name, "example")
         self.assertIn('hostname', ret)
         self.assertEqual(ret['hostname'], "example")
 
@@ -38,14 +37,14 @@ class TestNormalization(unittest.TestCase):
             "hostname": "service"
         }
         options = {"name": {"prefix": "1."}}
-        ret = normalize_service(service, options)
+        name, ret = normalize_service(service, options)
         self.assertEqual(ret['name'], "1.example")
-        self.assertEqual(ret['service'], "example")
+        self.assertEqual(name, "example")
         self.assertEqual(ret['hostname'], "service")
         del service['service']
-        ret = normalize_service(service, options)
+        name, ret = normalize_service(service, options)
         self.assertEqual(ret['name'], "1.example")
-        self.assertEqual(ret['service'], "example",
+        self.assertEqual(name, "example",
                          "service name is affected by name prefix")
         self.assertEqual(ret['hostname'], "service")
 
@@ -57,13 +56,13 @@ class TestNormalization(unittest.TestCase):
             "hostname": "service"
         }
         options = {"name": {"suffix": ".company"}}
-        ret = normalize_service(service, options)
+        name, ret = normalize_service(service, options)
         self.assertEqual(ret['name'], "example.company")
-        self.assertEqual(ret['service'], "example")
+        self.assertEqual(name, "example")
         self.assertEqual(ret['hostname'], "service")
         del service['service']
-        ret = normalize_service(service, options)
+        name, ret = normalize_service(service, options)
         self.assertEqual(ret['name'], "example.company")
-        self.assertEqual(ret['service'], "example",
+        self.assertEqual(name, "example",
                          "service name is affected by name suffix")
         self.assertEqual(ret['hostname'], "service")

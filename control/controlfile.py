@@ -23,7 +23,7 @@ class InvalidControlfile(Exception):
 class Controlfile:
     """A holder for a normalized controlfile"""
 
-    def __init__(self, controlfile_location='Controlfile'):
+    def __init__(self, controlfile_location):
         """
         There's two types of Controlfiles. A multi-service file that
         allows some meta-operations on top of the other kind of
@@ -46,6 +46,8 @@ class Controlfile:
 
         # TODO: make sure to test when there is no Controlfile and catch
         #       that error
+
+        self.open_discovered_controlfile(controlfile_location, options={})
 
         try:
             with open(controlfile_location, 'r') as controlfile:
@@ -78,7 +80,7 @@ class Controlfile:
                 data = json.load(ctrlfile)
                 service.update(data)
 
-    def open_discovered_controlfile(self, location):
+    def open_discovered_controlfile(self, location, options):
         """
         Open a file, discover what kind of Controlfile it is, and hand off
         handling it to the correct function.
@@ -93,12 +95,31 @@ class Controlfile:
           other Complex or Leaf Controlfiles
         - Leaf/Service Controlfile: defines only a single service
         """
+        try:
+            with open(location, 'r') as controlfile:
+                data = json.load(controlfile)
+                if set(data.keys()) & {'services', 'options'} != set():
+                    raise NotImplementedError
+        except FileNotFoundError as error:
+            self.logger.warning("Cannot open controlfile %s", location)
+        except json.decoder.JSONDecodeError as error:
+            self.logger.warning("Controlfile %s is malformed: %s", location, error)
+        else:
+            name, service = normalize_service(data, options)
+            self.push_service_into_list(name, service)
 
-    def push_service_into_list(self, service):
+    def push_service_into_list(self, name, service):
         """
         Given a service, push it into the list of services, and add an entry
         in the metaservices that it belongs in.
         """
+        self.services[name] = service
+        if 'required' in service and not service['required']:
+            self.services['optional']['services'].append(name)
+        else:
+            self.services['required']['services'].append(name)
+        self.services['all']['services'].append(name)
+        self.logger.info('added %s to the service list', name)
 
     def get_list_of_services(self):
         """
@@ -132,36 +153,46 @@ def normalize_service(service, opers={}):
     """
     if 'name' not in service and 'service' not in service:
         raise NameMissingFromService(service)
+    name = ''
     new_service = copy.deepcopy(service)
-    if 'name' not in new_service:
-        new_service['name'] = new_service['service']
-    if 'service' not in new_service:
-        new_service['service'] = new_service['name']
+    if 'service' in new_service:
+        name = new_service.pop('service')
+        # You're allowed to specify one, the other, or both. This covers the
+        # not both cases
+        if 'name' not in new_service:
+            new_service['name'] = name
+    else:
+        name = new_service['name']
+
     if 'hostname' not in new_service:
         new_service['hostname'] = new_service['name']
 
     # We check that the Controlfile only specifies operations we support,
     # that way we aren't trusting a random user to accidentally get a
-    # random string to get eval'd.
-    for key, ops in opers.items():
-        for op, rightside in (
-                (op, rightside)
-                for op, rightside in ops.items() if op in operations.keys()):
-            module_logger.debug("service %s %sing %s with %s. %s",
-                                new_service['service'],
-                                op,
-                                key,
-                                rightside,
-                                new_service[key])
-            new_service[key] = operations[op](new_service[key], rightside)
-
-    # for key, op, rightside in (
-    #         (
-    #             (key, op, rightside)
-    #             for op, rightside in ops.items() if op in cls.operations.keys())
-    #         for key, ops in opers.items()):
-    #     new_service[key] = cls.operations[op](new_service[key], rightside)
-    return new_service
+    # random string eval'd.
+    for key, op, rightside in (
+            (key, op, rightside)
+            for key, ops in opers.items()
+            for op, rightside in ops.items() if op in operations.keys()):
+        module_logger.debug("service %s %sing %s with %s. %s",
+                            name,
+                            op,
+                            key,
+                            rightside,
+                            new_service[key])
+        new_service[key] = operations[op](new_service[key], rightside)
+    # for key, ops in opers.items():
+    #     for op, rightside in (
+    #             (op, rightside)
+    #             for op, rightside in ops.items() if op in operations.keys()):
+    #         module_logger.debug("service %s %sing %s with %s. %s",
+    #                             new_service['service'],
+    #                             op,
+    #                             key,
+    #                             rightside,
+    #                             new_service[key])
+    #         new_service[key] = operations[op](new_service[key], rightside)
+    return name, new_service
 
 
 def satisfy_nested_options(outer, inner):
