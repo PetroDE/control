@@ -1,3 +1,4 @@
+"""Read in Controlfiles"""
 import copy
 import json
 import logging
@@ -12,11 +13,11 @@ operations = {
 }
 
 
-class NameMissingFromService(Exception):
+class NameMissingFromService(BaseException):
     pass
 
 
-class InvalidControlfile(Exception):
+class InvalidControlfile(BaseException):
     pass
 
 
@@ -151,7 +152,7 @@ def normalize_service(service, opers={}):
       definition
     Returns: a dict of the normalized service
     """
-    if 'name' not in service and 'service' not in service:
+    if 'name' not in service['container'] and 'service' not in service:
         raise NameMissingFromService(service)
     name = ''
     new_service = copy.deepcopy(service)
@@ -159,28 +160,24 @@ def normalize_service(service, opers={}):
         name = new_service.pop('service')
         # You're allowed to specify one, the other, or both. This covers the
         # not both cases
-        if 'name' not in new_service:
-            new_service['name'] = name
+        if 'name' not in new_service['container']:
+            new_service['container']['name'] = name
     else:
-        name = new_service['name']
+        name = new_service['container']['name']
 
-    if 'hostname' not in new_service:
-        new_service['hostname'] = new_service['name']
+    if 'hostname' not in new_service['container']:
+        new_service['container']['hostname'] = new_service['container']['name']
 
     # We check that the Controlfile only specifies operations we support,
     # that way we aren't trusting a random user to accidentally get a
     # random string eval'd.
-    for key, op, rightside in (
-            (key, op, rightside)
+    for key, op, val in (
+            (key, op, val)
             for key, ops in opers.items()
-            for op, rightside in ops.items() if op in operations.keys()):
-        module_logger.debug("service %s %sing %s with %s. %s",
-                            name,
-                            op,
-                            key,
-                            rightside,
-                            new_service[key])
-        new_service[key] = operations[op](new_service[key], rightside)
+            for op, val in ops.items() if op in operations.keys()):
+        module_logger.debug("service '%s' %sing %s with %s. %s",
+                            name, op, key, val, new_service)
+        new_service[key] = operations[op](new_service[key], val)
     # for key, ops in opers.items():
     #     for op, rightside in (
     #             (op, rightside)

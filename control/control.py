@@ -258,6 +258,7 @@ def main(args):
     parser.add_argument('-n', '--dry-run', action='store_true', help='Pretend to execute actions, but only log that they happened')
     parser.add_argument('-i', '--image', default=options.image, help='override the tagged name of the image being built')
     parser.add_argument('--name', help='the name to give to the container')
+    parser.add_argument('--controlfile', default=options.controlfile, help='override the controlfile that lets control know about the services it needs to manage')
     parser.add_argument('--dockerfile', default=options.dockerfile, help='override the dockerfile used to build the image')
     parser.add_argument('--no-cache', action='store_true', help='do not use the cache')
     parser.add_argument('--pull', action='store_const', const=True, dest='pull', help='pull the image from upstream')
@@ -318,10 +319,10 @@ def main(args):
     module_logger.debug("switching to debug logging")
 
     # Read in a Controlfile if one exists
-    ctrlfile_location = options.dockerfile
+    ctrlfile_location = options.controlfile
     try:
         ctrl = Controlfile(ctrlfile_location)
-    except NotImplemented:
+    except NotImplementedError:
         module_logger.info("That's it")
     else:
         module_logger.info(ctrl.services)

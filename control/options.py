@@ -8,6 +8,7 @@ options = argparse.Namespace()
 opts = vars(options)
 opts['debug'] = False
 opts['image'] = None
+opts['controlfile'] = 'Controlfile'
 opts['dockerfile'] = 'Dockerfile'
 opts['name'] = None
 opts['no_cache'] = False
