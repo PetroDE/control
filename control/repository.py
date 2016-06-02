@@ -62,6 +62,9 @@ class Repository:
         else:
             self.repo = '{}:{}'.format(self.image, self.tag)
 
+    def __str__(self):
+        return self.repo
+
     def get_pull_image_name(self):
         """
         This function exists because docker pull is the worst API endpoint.
