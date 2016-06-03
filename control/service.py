@@ -3,8 +3,16 @@ A little bit of trickery to enable single depth indexing of all values of a
 service.
 """
 
+import logging
+from copy import deepcopy
+
 from docker.utils import create_host_config
 from docker.api import ContainerApiMixin
+
+from control.repository import Repository
+from control.controlfile import InvalidControlfile
+
+module_logger = logging.getLogger('control.service')
 
 
 class Service:
@@ -22,28 +30,50 @@ class Service:
         {'self', 'host_config', 'volumes'})
 
     def __init__(self, service, controlfile):
+        self.__dict__['logger'] = logging.getLogger('control.service.Service')
         self.__dict__['service'] = ""
         self.__dict__['image'] = ""
         self.__dict__['container'] = {}
         self.__dict__['host_config'] = {}
         self.__dict__['expected_timeout'] = 10
+
+        serv = deepcopy(service)
+
+        # This is the one thing you actually have to have defined in a
+        # Controlfile
         try:
-            self.__dict__['container'] = service.pop('container')
-        except KeyError:
-            pass
+            self.__dict__['image'] = Repository.match(serv.pop('image'))
+        except KeyError as e:
+            self.logger.info('missing image %s', e)
+            raise InvalidControlfile(controlfile, 'missing image')
+
+        # We're going to hold onto this until we're ready to iterate over it
+        container_config = serv.pop('container', {})
+
+        # Handle the things that we have special requirements to handle
         # Set the service name
-        try:
-            self.__dict__['service'] = service.pop('service')
-        except KeyError:
-            # If this throws an error the service is improperly formatted
-            self.__dict__['service'] = self.container['name']
+        if 'service' in service:
+            self.__dict__['service'] = serv.pop('service')
+        elif 'name' in container_config:
+            self.__dict__['service'] = container_config['name']
+        else:
+            self.__dict__['service'] = self.image.image
         # Set whether the service is required
         try:
-            self.__dict__['required'] = service.pop('required')
+            self.__dict__['required'] = serv.pop('required')
         except KeyError:
-            self.__dict__['required'] = not service.pop('optional', False)
-        self.__dict__['image'] = service.pop('image', "")
-        self.controlfile = service.pop('controlfile', controlfile)
+            self.__dict__['required'] = not serv.pop('optional', False)
+        self.controlfile = serv.pop('controlfile', controlfile)
+
+        # The rest of the options can be straight assigned
+        for key, val in serv.items():
+            self.__dict__[key] = val
+
+        for key, val in ((x, y) for x, y in container_config.items() if x in
+                         self.host_config_options & self.container_options):
+            self.__setattr__(key, val)
+
+        self._fill_in_holes()
 
     def __getattr__(self, name):
         if name == 'volumes':
@@ -65,8 +95,8 @@ class Service:
         if name in self.__dict__:
             self.__dict__[name] = value
         elif name == 'volumes':
-            self.__dict__['host_config']['binds'] = [i for i in value if ":" in i]
-            self.__dict__['container']['volumes'] = [i for i in value if ":" not in i]
+            self.__dict__['container']['volumes'],
+            self.__dict__['host_config']['binds'] = _split_volumes(value)
         elif name == 'env':
             self.__dict__['container']['environment'] = value
         elif name in self.container_options:
@@ -75,3 +105,18 @@ class Service:
             self.host_config[name] = value
         else:
             self.__dict__[name] = value
+
+    def _fill_in_holes(self):
+        """
+        After we've read in the whole service, we go in and fill in spots that
+        might have been left blank.
+
+        - hastname <= from service name
+        """
+        if 'hostname' not in self.container:
+            self.hostname = self.service
+
+
+def _split_volumes(volumes):
+    return ([x for x in volumes if ":" not in x],
+            [x for x in volumes if ":" in x])
