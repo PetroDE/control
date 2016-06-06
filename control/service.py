@@ -24,7 +24,7 @@ class Service:
         'required', 'controlfile', 'dockerfile'}
     host_config_options = (
         set(create_host_config.__code__.co_varnames) -
-        {'k', 'l', 'v'})
+        {'k', 'l', 'v', 'cpu_group', 'tmpfs'})
     container_options = (
         set(ContainerApiMixin.create_container.__code__.co_varnames) -
         {
