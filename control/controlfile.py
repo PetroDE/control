@@ -1,9 +1,9 @@
 """Read in Controlfiles"""
-import copy
 import json
 import logging
 import os
 
+from control.service import Service
 from control.exceptions import NameMissingFromService, InvalidControlfile
 
 module_logger = logging.getLogger('control.controlfile')
@@ -100,7 +100,8 @@ class Controlfile:
         except json.decoder.JSONDecodeError as error:
             self.logger.warning("Controlfile %s is malformed: %s", location, error)
         else:
-            name, service = normalize_service(data, options)
+            serv = Service(data, location)
+            name, service = normalize_service(serv, options)
             self.push_service_into_list(name, service)
 
     def push_service_into_list(self, name, service):
@@ -131,37 +132,13 @@ def normalize_service(service, opers={}):
     """
     Takes a service, and options and applies the transforms to the service.
 
-    Without options these are the defaults for a service:
-    {
-        "name": # REQUIRED,
-        "service": "{name}",
-        "hostname": "{name}",
-    }
-
     Allowed args:
-    - service: must be a dict that defines a service in the form the
-      Controlfile service
+    - service: must be service object that was created before hand
     - options: a dict of options that define transforms to a service.
       The format must conform to a Controlfile metaservice options
       definition
     Returns: a dict of the normalized service
     """
-    if 'name' not in service['container'] and 'service' not in service:
-        raise NameMissingFromService(service)
-    name = ''
-    new_service = copy.deepcopy(service)
-    if 'service' in new_service:
-        name = new_service.pop('service')
-        # You're allowed to specify one, the other, or both. This covers the
-        # not both cases
-        if 'name' not in new_service['container']:
-            new_service['container']['name'] = name
-    else:
-        name = new_service['container']['name']
-
-    if 'hostname' not in new_service['container']:
-        new_service['container']['hostname'] = new_service['container']['name']
-
     # We check that the Controlfile only specifies operations we support,
     # that way we aren't trusting a random user to accidentally get a
     # random string eval'd.
@@ -170,20 +147,9 @@ def normalize_service(service, opers={}):
             for key, ops in opers.items()
             for op, val in ops.items() if op in operations.keys()):
         module_logger.debug("service '%s' %sing %s with %s. %s",
-                            name, op, key, val, new_service)
-        new_service[key] = operations[op](new_service[key], val)
-    # for key, ops in opers.items():
-    #     for op, rightside in (
-    #             (op, rightside)
-    #             for op, rightside in ops.items() if op in operations.keys()):
-    #         module_logger.debug("service %s %sing %s with %s. %s",
-    #                             new_service['service'],
-    #                             op,
-    #                             key,
-    #                             rightside,
-    #                             new_service[key])
-    #         new_service[key] = operations[op](new_service[key], rightside)
-    return name, new_service
+                            service.name, op, key, val, service)
+        service[key] = operations[op](service[key], val)
+    return service.name, service
 
 
 def satisfy_nested_options(outer, inner):
