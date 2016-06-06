@@ -4,6 +4,8 @@ import json
 import logging
 import os
 
+from control.exceptions import NameMissingFromService, InvalidControlfile
+
 module_logger = logging.getLogger('control.controlfile')
 
 operations = {
@@ -11,14 +13,6 @@ operations = {
     'prefix': lambda x, y: '{}{}'.format(y, x),
     'union': lambda x, y: set(x) | set(y)
 }
-
-
-class NameMissingFromService(BaseException):
-    pass
-
-
-class InvalidControlfile(BaseException):
-    pass
 
 
 class Controlfile:

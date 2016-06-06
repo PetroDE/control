@@ -8,64 +8,11 @@ import docker
 from control.dclient import dclient
 from control.shittylogging import log
 from control.options import options
-
-
-class ContainerException(Exception):
-    def __init__(self, msg):
-        self.msg = msg
-
-    def __str__(self):
-        return self.msg
-
-
-class AlreadyExists(ContainerException):
-    def __init__(self, msg):
-        self.msg = msg
-
-    def __str__(self):
-        return '''Container already exists: {}'''.format(self.msg)
-
-
-class DoesNotExist(ContainerException):
-    """A much more useful error than docker-py's standard 404 message"""
-
-    def __init__(self, name):
-        self.name = name
-
-    def __str__(self):
-        return 'Container does not exist: {}'.format(self.name)
-
-
-class VolumePseudoExists(ContainerException):
-    """Volumes were probably manually removed, but Docker caches volume's existence"""
-
-    def __init__(self, msg):
-        self.msg = msg
-
-    def __str__(self):
-        return '''Docker is having trouble creating a volume. Try looking
-        at docker volume ls or try restarting the docker daemon.'''
-
-
-class InvalidVolumeName(ContainerException):
-    def __init__(self, msg):
-        self.msg = msg
-
-    def __str__(self):
-        return self.msg
-
-
-class TransientVolumeCreation(ContainerException):
-    def __init__(self, msg):
-        self.msg = msg
-
-    def __str__(self):
-        return '''You cannot create transient volumes in the Controlfile.
-        Name your volume, or bind it to the host'''
-
-
-class NotRunning(ContainerException):
-    pass
+from control.exceptions import (
+    ContainerAlreadyExists, ContainerDoesNotExist,
+    VolumePseudoExists, InvalidVolumeName,
+    TransientVolumeCreation
+)
 
 
 class Container:
@@ -125,7 +72,7 @@ class Container:
             if 'volume name invalid' in e.explanation.decode('utf-8'):
                 raise InvalidVolumeName(e.explanation.decode('utf-8'))
             elif 'is already in use by container' in e.explanation.decode('utf-8'):
-                raise AlreadyExists(e.explanation.decode('utf-8'))
+                raise ContainerAlreadyExists(e.explanation.decode('utf-8'))
             log(e, level='debug')
             log(e.response, level='debug')
             log(e.explanation.decode('utf-8'), level='debug')
@@ -141,7 +88,7 @@ class CreatedContainer(Container):
             super().__init__(self.inspect['Image'], conf)
         except docker.errors.NotFound as e:
             log(e, level='debug')
-            raise DoesNotExist(name)
+            raise ContainerDoesNotExist(name)
 
     def start(self):
         try:

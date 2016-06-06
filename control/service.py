@@ -10,7 +10,7 @@ from docker.utils import create_host_config
 from docker.api import ContainerApiMixin
 
 from control.repository import Repository
-from control.controlfile import InvalidControlfile
+from control.exceptions import InvalidControlfile
 
 module_logger = logging.getLogger('control.service')
 
