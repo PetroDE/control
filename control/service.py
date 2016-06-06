@@ -23,10 +23,10 @@ class Service:
         'service', 'image', 'container', 'host_config',
         'required', 'controlfile', 'dockerfile'}
     host_config_options = (
-        {*create_host_config.__code__.co_varnames} -
+        set(create_host_config.__code__.co_varnames) -
         {'k', 'l', 'v'})
     container_options = (
-        {*ContainerApiMixin.create_container.__code__.co_varnames} -
+        set(ContainerApiMixin.create_container.__code__.co_varnames) -
         {
             'self',
             'dns',
