@@ -170,7 +170,6 @@ class TestService(unittest.TestCase):
                 "cpu_period": 10,
                 "group_add": ["cdrom"],
                 "devices": "/dev/mdadm",
-                "tmpfs": ["/mnt/tmpfs"]
             })
         self.assertNotIn(
             'cpu_group',
