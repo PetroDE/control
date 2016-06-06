@@ -102,6 +102,8 @@ class Service:
         if name == 'volumes':
             return list(self.__dict__['container'].get('volumes', set()) |
                         self.__dict__['host_config'].get('binds', set()))
+        elif name == 'cmd':
+            name = 'command'
         elif name == 'env':
             name = 'environment'
         try:
@@ -118,7 +120,8 @@ class Service:
         if name in self.__dict__:
             self.__dict__[name] = value
         elif name == 'volumes':
-            self.__dict__['container']['volumes'], self.__dict__['host_config']['binds'] = _split_volumes(value)
+            (self.__dict__['container']['volumes'],
+             self.__dict__['host_config']['binds']) = _split_volumes(value)
         elif name == 'env':
             self.__dict__['container']['environment'] = value
         elif name == 'cmd':
