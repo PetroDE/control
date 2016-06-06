@@ -23,11 +23,24 @@ class Service:
         'service', 'image', 'container', 'host_config',
         'required', 'controlfile', 'dockerfile'}
     host_config_options = (
-        {*create_host_config.__code__.co_varnames} ^
+        {*create_host_config.__code__.co_varnames} -
         {'k', 'l', 'v'})
     container_options = (
-        {*ContainerApiMixin.create_container.__code__.co_varnames} ^
-        {'self', 'host_config', 'volumes'})
+        {*ContainerApiMixin.create_container.__code__.co_varnames} -
+        {
+            'self',
+            'dns',
+            'host_config',
+            'mem_limit',
+            'memswap_limit',
+            'volumes',
+            'volumes_from'
+        })
+    all_options = container_options | host_config_options | {
+        'env',
+        'cmd',
+        'volumes'
+    }
 
     def __init__(self, service, controlfile):
         self.__dict__['logger'] = logging.getLogger('control.service.Service')
@@ -69,15 +82,25 @@ class Service:
         for key, val in serv.items():
             self.__dict__[key] = val
 
+        # We do this awkward check to make sure that we don't accidentally
+        # do the equivalent of eval'ing a random string that may or may not be
+        # malicious.
+        if self.logger.isEnabledFor(logging.DEBUG):
+            self.logger.debug(
+                'Accepting these configurations: %s',
+                sorted(x for x in container_config.keys() if x in self.all_options))
+            self.logger.debug(
+                'Throwing out these these options: %s',
+                sorted(x for x in container_config.keys() if x not in self.all_options))
         for key, val in ((x, y) for x, y in container_config.items() if x in
-                         self.host_config_options & self.container_options):
+                         self.all_options):
             self.__setattr__(key, val)
 
         self._fill_in_holes()
 
     def __getattr__(self, name):
         if name == 'volumes':
-            return list(self.__dict__['container'].get('volumes', set()) ^
+            return list(self.__dict__['container'].get('volumes', set()) |
                         self.__dict__['host_config'].get('binds', set()))
         elif name == 'env':
             name = 'environment'
@@ -95,10 +118,11 @@ class Service:
         if name in self.__dict__:
             self.__dict__[name] = value
         elif name == 'volumes':
-            self.__dict__['container']['volumes'],
-            self.__dict__['host_config']['binds'] = _split_volumes(value)
+            self.__dict__['container']['volumes'], self.__dict__['host_config']['binds'] = _split_volumes(value)
         elif name == 'env':
             self.__dict__['container']['environment'] = value
+        elif name == 'cmd':
+            self.__dict__['container']['command'] = value
         elif name in self.container_options:
             self.container[name] = value
         elif name in self.host_config_options:
@@ -113,8 +137,8 @@ class Service:
 
         - hastname <= from service name
         """
-        if 'hostname' not in self.container:
-            self.hostname = self.service
+        if len(self.container) > 0 and 'hostname' not in self.container:
+            self.hostname = self.name
 
 
 def _split_volumes(volumes):

@@ -31,7 +31,7 @@ class TestService(unittest.TestCase):
         serv['service'] = "server"
         result = service.Service(serv, cntrlfile)
         self.assertEqual(
-            result.image,
+            str(result.image),
             "test:latest")
         self.assertEqual(
             result.service,
@@ -132,23 +132,25 @@ class TestService(unittest.TestCase):
         self.assertEqual(str(result.image), "busybox:latest")
         self.assertEqual(result.expected_timeout, 3)
         self.assertEqual(result.dockerfile, "Dockerfile.example")
+        # import pytest; pytest.set_trace()
         self.assertEqual(
             result.container,
             {
-                "cmd": "/usr/cat",
+                "command": "/usr/cat",
                 "hostname": "testme",
                 "user": "foo",
                 "detach": True,
                 "stdin_open": True,
                 "tty": True,
                 "ports": [8080, (8888, 'udp'), 8443],
-                "env": ["FOO=bar", "DOMAIN=example.com"],
+                "environment": ["FOO=bar", "DOMAIN=example.com"],
                 "volumes": ["/etc"],
                 "network_disabled": True,
                 "name": "test",
                 "entrypoint": "/bin/bash",
                 "cpu_shares": 1,
                 "labels": {"label": "me"},
+                "working_dir": "/etc"
             })
         self.assertEqual(
             result.host_config,
@@ -166,9 +168,12 @@ class TestService(unittest.TestCase):
                 "read_only": True,
                 "ipc_mode": "shared",
                 "shm_size": '100M',
-                "cpu_group": 10,
                 "cpu_period": 10,
                 "group_add": ["cdrom"],
                 "devices": "/dev/mdadm",
                 "tmpfs": ["/mnt/tmpfs"]
             })
+        self.assertNotIn(
+            'cpu_group',
+            result.host_config,
+            msg='Docker API version changed. Control supports 1.21-1.23')
