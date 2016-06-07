@@ -4,11 +4,13 @@ service.
 """
 
 import logging
+import sys
 from copy import deepcopy
 
 from docker.utils import create_host_config
 from docker.api import ContainerApiMixin
 
+from control.dclient import dclient
 from control.repository import Repository
 from control.exceptions import InvalidControlfile
 
@@ -16,12 +18,60 @@ module_logger = logging.getLogger('control.service')
 
 
 class Service:
-    """Using a dict was turning out to need more code than was necessary.
+    """
+    Service is a bit of an odd bird. It started as just a dict that held the
+    configuration for a container, and anything that needed to modify it would
+    simply put its data where it needed to go. This spread too much management
+    code all over Control.
+
+    Service holds some information that Control needs to manage a
+    container/image pair. These are accessible as attributes.
+
+    Anything that defines the container configuration (that docker needs to
+    know about) is split across two dicts (because Docker is so good at being
+    a magical box that you throw a configuration at and end up with a container
+    /s), so Service aliases the difference between these two away by acting as
+    a container.
+
+    Anything the docker-py documentation says goes into create_container or
+    create_host_config can be subscripted. e.g.:
+    - service['name']
+    - service['dns']
+    - service['working_dir']
+
+    The list of these options changes with each change to docker-py, so
+    Control slurps the list of options out so it can double check you.
+
+    Service also has some aliases so that if your Controlfile uses the CLI
+    flags as your parameter names, you don't get bitten. Yeah. I'm being
+    really nice to you. Unlike those jerks at Docker.
+
+    Oh. One other thing. The attributes can also be accessed by subscript.
+    Forcing you to remember which were Control internal, and what are just
+    passed through to Docker didn't sit well with me.
+
+    Attributes:
+    - service
+    - image
+    - expected_timeout
+    - required
+    - controlfile
+    - dockerfile: a dockerfile location cqn be guessed from the controlfile
+                  location, but if it doesn't exist this will be empty
+    - container: a dict ready to be given to create_container, except for
+    - host_config: a dict of options ready to be given to create_host_config
     """
 
     service_options = {
-        'service', 'image', 'container', 'host_config',
-        'required', 'controlfile', 'dockerfile'}
+        'container',
+        'controlfile',
+        'dockerfile',
+        'expected_timeout',
+        'host_config',
+        'image',
+        'required',
+        'service'
+    }
     host_config_options = (
         set(create_host_config.__code__.co_varnames) -
         {'k', 'l', 'v', 'cpu_group', 'tmpfs'})
@@ -41,23 +91,27 @@ class Service:
         'cmd',
         'volumes'
     }
+    abbreviations = {
+        'cmd': 'command',
+        'env': 'environment'
+    }
 
     def __init__(self, service, controlfile):
-        self.__dict__['logger'] = logging.getLogger('control.service.Service')
-        self.__dict__['service'] = ""
-        self.__dict__['image'] = ""
-        self.__dict__['container'] = {}
-        self.__dict__['host_config'] = {}
-        self.__dict__['expected_timeout'] = 10
+        self.logger = logging.getLogger('control.service.Service')
+        self.service = ""
+        self.dockerfile = ""
+        self.container = {}
+        self.host_config = {}
+        self.expected_timeout = 10
 
         serv = deepcopy(service)
 
         # This is the one thing you actually have to have defined in a
         # Controlfile
         try:
-            self.__dict__['image'] = Repository.match(serv.pop('image'))
+            self.image = Repository.match(serv.pop('image'))
         except KeyError as e:
-            self.logger.info('missing image %s', e)
+            self.logger.critical('missing image %s', e)
             raise InvalidControlfile(controlfile, 'missing image')
 
         # We're going to hold onto this until we're ready to iterate over it
@@ -66,20 +120,24 @@ class Service:
         # Handle the things that we have special requirements to handle
         # Set the service name
         if 'service' in service:
-            self.__dict__['service'] = serv.pop('service')
+            self.service = serv.pop('service')
         elif 'name' in container_config:
-            self.__dict__['service'] = container_config['name']
+            self.service = container_config['name']
         else:
-            self.__dict__['service'] = self.image.image
+            self.service = self.image.image
         # Set whether the service is required
         try:
-            self.__dict__['required'] = serv.pop('required')
+            self.required = serv.pop('required')
         except KeyError:
-            self.__dict__['required'] = not serv.pop('optional', False)
+            self.required = not serv.pop('optional', False)
+        # Record the controlfile that this service came from
         self.controlfile = serv.pop('controlfile', controlfile)
 
         # The rest of the options can be straight assigned
-        for key, val in serv.items():
+        for key, val in (
+                (key, val)
+                for key, val in serv.items()
+                if key in self.service_options):
             self.__dict__[key] = val
 
         # We do this awkward check to make sure that we don't accidentally
@@ -94,44 +152,66 @@ class Service:
                 sorted(x for x in container_config.keys() if x not in self.all_options))
         for key, val in ((x, y) for x, y in container_config.items() if x in
                          self.all_options):
-            self.__setattr__(key, val)
+            self[key] = val
 
         self._fill_in_holes()
 
-    def __getattr__(self, name):
-        if name == 'volumes':
-            return list(self.__dict__['container'].get('volumes', set()) |
-                        self.__dict__['host_config'].get('binds', set()))
-        elif name == 'cmd':
-            name = 'command'
-        elif name == 'env':
-            name = 'environment'
+    def prepare_container_options(self):
+        """
+        Call this function to dump out a single dict ready to be passed to
+        docker.Client.create_container
+        """
+        hc = dclient.create_host_config(**self.host_config)
+        if sys.version_info >= (3, 5):
+            return {**self.container, **hc}
+        r = self.container.copy()
+        r.update(hc)
+        return r
+
+    def __len__(self):
+        return len(self.container) + len(self.host_config)
+
+    def __getitem__(self, key):
+        if key == 'volumes':
+            return list(self.container.get('volumes', set()) |
+                        self.host_config.get('binds', set()))
+        elif key in self.abbreviations.keys():
+            key = self.abbreviations[key]
         try:
-            return self.__dict__['container'][name]
+            return self.container[key]
         except KeyError:
             try:
-                return self.__dict__['host_config'][name]
+                return self.host_config[key]
             except KeyError:
-                raise AttributeError
+                return self.__dict__[key]
 
-        return self.container[name]
+    def __setitem__(self, key, value):
+        if key in self.abbreviations.keys():
+            key = self.abbreviations[key]
 
-    def __setattr__(self, name, value):
-        if name in self.__dict__:
-            self.__dict__[name] = value
-        elif name == 'volumes':
+        if key in self.service_options:
+            self.__dict__[key] = value
+        elif key == 'volumes':
             (self.__dict__['container']['volumes'],
              self.__dict__['host_config']['binds']) = _split_volumes(value)
-        elif name == 'env':
-            self.__dict__['container']['environment'] = value
-        elif name == 'cmd':
-            self.__dict__['container']['command'] = value
-        elif name in self.container_options:
-            self.container[name] = value
-        elif name in self.host_config_options:
-            self.host_config[name] = value
+        elif key in self.container_options:
+            self.container[key] = value
+        elif key in self.host_config_options:
+            self.host_config[key] = value
         else:
-            self.__dict__[name] = value
+            raise KeyError
+
+    def __delitem__(self, key):
+        if key == 'image':
+            raise KeyError(key)
+        if key in self.container.keys():
+            del self.container[key]
+        elif key in self.host_config.keys():
+            del self.host_config[key]
+        elif key in self.service_options:
+            del self.__dict__[key]
+        else:
+            raise KeyError(key)
 
     def _fill_in_holes(self):
         """
@@ -141,7 +221,7 @@ class Service:
         - hastname <= from service name
         """
         if len(self.container) > 0 and 'hostname' not in self.container:
-            self.hostname = self.name
+            self['hostname'] = self['name']
 
 
 def _split_volumes(volumes):

@@ -90,6 +90,7 @@ class TestService(unittest.TestCase):
             "service": "server",
             "image": "busybox",
             "expected_timeout": 3,
+            "required": False,
             "dockerfile": "Dockerfile.example",
             "container": {
                 "cmd": "/usr/cat",
@@ -130,6 +131,7 @@ class TestService(unittest.TestCase):
         self.assertEqual(result.service, "server")
         self.assertEqual(str(result.image), "busybox:latest")
         self.assertEqual(result.expected_timeout, 3)
+        self.assertEqual(result.required, False)
         self.assertEqual(result.dockerfile, "Dockerfile.example")
         # import pytest; pytest.set_trace()
         self.assertEqual(
@@ -175,3 +177,37 @@ class TestService(unittest.TestCase):
             'cpu_group',
             result.host_config,
             msg='Docker API version changed. Control supports 1.21-1.23')
+
+    def test_direct_inclusion(self):
+        """Test that the controlfile is set correctly"""
+        serv = {
+            "image": "busybox",
+            "container": {
+                "name": "test"
+            }
+        }
+        cntrlfile = "./Controlfile"
+        result = service.Service(serv, cntrlfile)
+        self.assertEqual(result.controlfile, "./Controlfile")
+
+    def test_indirect_inclusion(self):
+        """
+        The Controlfile passed into the Service constructor will always be the
+        place the service was discovered in, but a discovered service can
+        point to a Controlfile that will fill out the configuration of this
+        service.
+        The controlfile member should always be the most complete description
+        of the service. If we track this accurately we can guess that the
+        directory the Controlfile lives in is also the place where the image
+        should be built from. This test makes sure we track it correctly.
+        """
+        serv = {
+            "image": "busybox",
+            "controlfile": "inclusion/Controlfile",
+            "container": {
+                "name": "test"
+            }
+        }
+        cntrlfile = "./Controlfile"
+        result = service.Service(serv, cntrlfile)
+        self.assertEqual(result.controlfile, "inclusion/Controlfile")
