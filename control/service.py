@@ -75,6 +75,9 @@ class Service:
     host_config_options = (
         set(create_host_config.__code__.co_varnames) -
         {'k', 'l', 'v', 'cpu_group', 'tmpfs'})
+
+    # Options that have moved to the host_config should be put in there
+    # despite them still being accepted by docker-py
     container_options = (
         set(ContainerApiMixin.create_container.__code__.co_varnames) -
         {
@@ -83,18 +86,18 @@ class Service:
             'host_config',
             'mem_limit',
             'memswap_limit',
-            'volumes',
             'volumes_from'
         })
-    all_options = container_options | host_config_options | {
-        'env',
-        'cmd',
-        'volumes'
-    }
+
     abbreviations = {
         'cmd': 'command',
         'env': 'environment'
     }
+
+    all_options = (container_options |
+                   host_config_options |
+                   abbreviations.keys() |
+                   {'volumes'})
 
     def __init__(self, service, controlfile):
         self.logger = logging.getLogger('control.service.Service')
