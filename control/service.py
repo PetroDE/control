@@ -111,8 +111,10 @@ class Service:
 
         # This is the one thing you actually have to have defined in a
         # Controlfile
+        # Because later we normalize options, we don't create the Repository
+        # object here, we just read in the string
         try:
-            self.image = Repository.match(serv.pop('image'))
+            self.image = serv.pop('image')
         except KeyError as e:
             self.logger.critical('missing image %s', e)
             raise InvalidControlfile(controlfile, 'missing image')
@@ -127,7 +129,7 @@ class Service:
         elif 'name' in container_config:
             self.service = container_config['name']
         else:
-            self.service = self.image.image
+            self.service = Repository.match(self.image).image
         # Set whether the service is required
         try:
             self.required = serv.pop('required')
@@ -143,6 +145,7 @@ class Service:
                 if key in self.service_options):
             self.__dict__[key] = val
 
+        # Now we are ready to iterate over the container configuration.
         # We do this awkward check to make sure that we don't accidentally
         # do the equivalent of eval'ing a random string that may or may not be
         # malicious.

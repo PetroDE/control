@@ -20,7 +20,7 @@ class TestService(unittest.TestCase):
         cntrlfile = "./Controlfile"
         result = service.Service(serv, cntrlfile)
         self.assertEqual(
-            str(result.image),
+            result.image,
             "test:latest")
         self.assertEqual(
             result.service,
@@ -31,7 +31,7 @@ class TestService(unittest.TestCase):
         serv['service'] = "server"
         result = service.Service(serv, cntrlfile)
         self.assertEqual(
-            str(result.image),
+            result.image,
             "test:latest")
         self.assertEqual(
             result.service,
@@ -52,8 +52,8 @@ class TestService(unittest.TestCase):
         cntrlfile = "./Controlfile"
         result = service.Service(serv, cntrlfile)
         self.assertEqual(
-            str(result.image),
-            "busybox:latest")
+            result.image,
+            "busybox")
         self.assertEqual(
             result.service,
             "test")
@@ -68,8 +68,8 @@ class TestService(unittest.TestCase):
         serv['service'] = "server"
         result = service.Service(serv, cntrlfile)
         self.assertEqual(
-            str(result.image),
-            "busybox:latest")
+            result.image,
+            "busybox")
         self.assertEqual(
             result.service,
             "server")
@@ -129,7 +129,7 @@ class TestService(unittest.TestCase):
         cntrlfile = "./Controlfile"
         result = service.Service(serv, cntrlfile)
         self.assertEqual(result.service, "server")
-        self.assertEqual(str(result.image), "busybox:latest")
+        self.assertEqual(result.image, "busybox")
         self.assertEqual(result.expected_timeout, 3)
         self.assertEqual(result.required, False)
         self.assertEqual(result.dockerfile, "Dockerfile.example")
