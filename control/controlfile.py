@@ -26,6 +26,7 @@ class Controlfile:
         Full Controlfiles can reference both kinds files to load in more
         options for meta-services.
         """
+        self.logger = logging.getLogger('control.controlfile.Controlfile')
         self.services = {
             "all": {
                 "services": []
@@ -37,43 +38,42 @@ class Controlfile:
                 "services": []
             }
         }
-        self.logger = logging.getLogger('control.controlfile.Controlfile')
 
         # TODO: make sure to test when there is no Controlfile and catch
         #       that error
 
         self.open_discovered_controlfile(controlfile_location, options={})
 
-        try:
-            with open(controlfile_location, 'r') as controlfile:
-                data = json.load(controlfile)
-                if 'services' in data:
-                    self.control.update(data)
-                else:
-                    if 'service' in data:
-                        service_name = data['service']
-                    elif 'container' in data and 'name' in data['container']:
-                        service_name = data['container']['name']
-                    elif 'container' in data and 'hostname' in data['container']:
-                        service_name = data['container']['hostname']
-                    else:
-                        raise NameMissingFromService
-                    self.control['services'][service_name] = data
-                    self.control['services']['all']['services'].append(service_name)
-                    # TODO check if the service is in fact required
-                    self.control['services']['required']['services'].append(service_name)
-        except FileNotFoundError as error:
-            self.logger.critical('Controlfile does not exist: %s', error)
-            raise
-        except json.decoder.JSONDecodeError as error:
-            self.logger.critical('Could not parse Controlfile as JSON: %s', error)
-            raise InvalidControlfile
-        dirname = os.path.dirname(controlfile_location)
-        for service in (s for s in self.control['services'] if 'controlfile' in s):
-            file_location = '{}/{}'.format(dirname, service['controlfile'])
-            with open(file_location, 'r') as ctrlfile:
-                data = json.load(ctrlfile)
-                service.update(data)
+        # try:
+        #     with open(controlfile_location, 'r') as controlfile:
+        #         data = json.load(controlfile)
+        #         if 'services' in data:
+        #             self.control.update(data)
+        #         else:
+        #             if 'service' in data:
+        #                 service_name = data['service']
+        #             elif 'container' in data and 'name' in data['container']:
+        #                 service_name = data['container']['name']
+        #             elif 'container' in data and 'hostname' in data['container']:
+        #                 service_name = data['container']['hostname']
+        #             else:
+        #                 raise NameMissingFromService
+        #             self.control['services'][service_name] = data
+        #             self.control['services']['all']['services'].append(service_name)
+        #             # TODO check if the service is in fact required
+        #             self.control['services']['required']['services'].append(service_name)
+        # except FileNotFoundError as error:
+        #     self.logger.critical('Controlfile does not exist: %s', error)
+        #     raise
+        # except json.decoder.JSONDecodeError as error:
+        #     self.logger.critical('Could not parse Controlfile as JSON: %s', error)
+        #     raise InvalidControlfile
+        # dirname = os.path.dirname(controlfile_location)
+        # for service in (s for s in self.control['services'] if 'controlfile' in s):
+        #     file_location = '{}/{}'.format(dirname, service['controlfile'])
+        #     with open(file_location, 'r') as ctrlfile:
+        #         data = json.load(ctrlfile)
+        #         service.update(data)
 
     def open_discovered_controlfile(self, location, options):
         """
@@ -110,10 +110,10 @@ class Controlfile:
         in the metaservices that it belongs in.
         """
         self.services[name] = service
-        if 'required' in service and not service['required']:
-            self.services['optional']['services'].append(name)
-        else:
+        if service.required:
             self.services['required']['services'].append(name)
+        else:
+            self.services['optional']['services'].append(name)
         self.services['all']['services'].append(name)
         self.logger.info('added %s to the service list', name)
 
@@ -149,7 +149,7 @@ def normalize_service(service, opers={}):
         module_logger.debug("service '%s' %sing %s with %s. %s",
                             service.name, op, key, val, service)
         service[key] = operations[op](service[key], val)
-    return service.name, service
+    return service['name'], service
 
 
 def satisfy_nested_options(outer, inner):
