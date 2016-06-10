@@ -4,6 +4,7 @@ service.
 """
 
 import logging
+import os.path
 import sys
 from copy import deepcopy
 
@@ -179,8 +180,8 @@ class Service:
 
     def __getitem__(self, key):
         if key == 'volumes':
-            return list(self.container.get('volumes', set()) |
-                        self.host_config.get('binds', set()))
+            return (self.container.get('volumes', []) +
+                    self.host_config.get('binds', []))
         elif key in self.abbreviations.keys():
             key = self.abbreviations[key]
         try:
@@ -226,8 +227,13 @@ class Service:
 
         - hastname <= from service name
         """
+        # Set the container's hostname based on guesses
         if len(self.container) > 0 and 'hostname' not in self.container:
             self['hostname'] = self['name']
+        # Guess that there's a Dockerfile next to the Controlfile
+        dockerfile = os.path.dirname(self.controlfile) + '/Dockerfile'
+        if os.path.isfile(dockerfile):
+            self.dockerfile = dockerfile
 
 
 def _split_volumes(volumes):
