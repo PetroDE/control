@@ -20,3 +20,8 @@ test:
 
 clean:
 	-rm $(EXE)
+
+reallyclean:
+	-rm $(EXE)
+	-rm -r **/*/__pycache__
+	-rm **/*pyc
