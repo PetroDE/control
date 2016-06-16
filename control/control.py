@@ -115,9 +115,12 @@ def print_formatted(line):
         return
 
 
-def build(args):  # TODO: DRY it up
-    if args.debug or args.dry_run:
-        print('running docker build')
+def build(args, ctrl):  # TODO: DRY it up
+    module_logger.debug('running docker build')
+
+    # for serv in args.services
+    #     module_logger.info('building %s', serv)
+
     if not hasattr(args, 'image') or not args.image:
         err('No image name was specified. Edit your Controlfile or specify with -i')
         sys.exit(3)
@@ -151,7 +154,7 @@ def build(args):  # TODO: DRY it up
     return True
 
 
-def build_prod(args):
+def build_prod(args, ctrl):
     if args.pull is None:
         args.pull = True
     if args.debug or args.dry_run:
@@ -177,7 +180,7 @@ def build_prod(args):
     return True
 
 
-def start(args):
+def start(args, ctrl):
     # TODO: normalize all the options
     # TODO: parse {collective} out of options in the controlfile
     if options.name:
@@ -205,7 +208,7 @@ def start(args):
     return True
 
 
-def stop(args):
+def stop(args, ctrl):
     try:
         container = CreatedContainer(options.container['name'])
         if options.force:
@@ -226,19 +229,20 @@ def stop(args):
     return True
 
 
-def restart(args):
+def restart(args, ctrl):
     if not stop(args):
         return False
     return start(args)
 
 
-def default(args):
+def default(args, ctrl):
     ret = build(args)
     if not ret:
         return ret
     if hasattr(args, 'container') and options.container['name']:
         return restart(args)
     return ret
+    module_logger.debug(vars(args))
 
 
 def main(args):
@@ -252,62 +256,69 @@ def main(args):
 
     # If you set a value that has a default, set it up above, then you must
     # reference that default here, otherwise it will be clobbered
-    parser = argparse.ArgumentParser(description='Control the building and running of images and containers')
-    parser.add_argument('-d', '--debug', action='store_true', help='print debug information helpful to developing the control script. This probably won\'t be useful to using the script, consider -v')
-    parser.add_argument('-f', '--force', action='store_true', help='be forceful in all things')
-    parser.add_argument('-n', '--dry-run', action='store_true', help='Pretend to execute actions, but only log that they happened')
-    parser.add_argument('-i', '--image', default=options.image, help='override the tagged name of the image being built')
-    parser.add_argument('--name', help='the name to give to the container')
-    parser.add_argument('--controlfile', default=options.controlfile, help='override the controlfile that lets control know about the services it needs to manage')
-    parser.add_argument('--dockerfile', default=options.dockerfile, help='override the dockerfile used to build the image')
-    parser.add_argument('--no-cache', action='store_true', help='do not use the cache')
-    parser.add_argument('--pull', action='store_const', const=True, dest='pull', help='pull the image from upstream')
-    parser.add_argument('--no-pull', action='store_const', const=False, dest='pull', help='do not pull newer versions of the base image')
-    parser.add_argument('--no-volumes', action='store_true', help='override the volumes mentioned in the Controlfile')
-    parser.add_argument('--no-verify', action='store_true', help='do not check the validity of the registry\'s SSL cert')
-    parser.add_argument('--wipe', action='store_true', help='Make sure that volumes are empty after stopping. May require sudo. THIS IS EXTREMELY DANGEROUS')
-    parser.add_argument('-V', '--version', action='version', version='%(prog)s v{}'.format(options.version))
+    shared_parser = argparse.ArgumentParser(add_help=False)
+    shared_parser.add_argument('-d', '--debug', action='store_true', help='print debug information helpful to developing the control script. This probably won\'t be useful to using the script, consider -v')
+    shared_parser.add_argument('-f', '--force', action='store_true', help='be forceful in all things')
+    shared_parser.add_argument('-i', '--image', default=options.image, help='override the tagged name of the image being built')
+    shared_parser.add_argument('-n', '--name', help='the name to give to the container')
+    shared_parser.add_argument('-w', '--wipe', action='store_true', help='Make sure that volumes are empty after stopping. May require sudo. THIS IS EXTREMELY DANGEROUS')
+    shared_parser.add_argument('--dry-run', action='store_true', help='Pretend to execute actions, but only log that they happened')
+    shared_parser.add_argument('--controlfile', default=options.controlfile, help='override the controlfile that lets control know about the services it needs to manage')
+    shared_parser.add_argument('--dockerfile', default=options.dockerfile, help='override the dockerfile used to build the image')
+    shared_parser.add_argument('--no-cache', action='store_true', help='do not use the cache')
+    shared_parser.add_argument('--pull', action='store_const', const=True, dest='pull', help='pull the image from upstream')
+    shared_parser.add_argument('--no-pull', action='store_const', const=False, dest='pull', help='do not pull newer versions of the base image')
+    shared_parser.add_argument('--no-volumes', action='store_true', help='override the volumes mentioned in the Controlfile')
+    shared_parser.add_argument('--no-rm', action='store_false', help='do not remove any images, even on success')
+    shared_parser.add_argument('--no-verify', action='store_true', help='do not check the validity of the registry\'s SSL cert')
+
+    service_parser = argparse.ArgumentParser(add_help=False)
+    service_parser.add_argument('services', type=str, nargs='*', help='specify a list of services to operate on. Defaults to all required services')
+
+    parser = argparse.ArgumentParser(
+        description='Control the building and running of images and containers',
+        parents=[shared_parser])
+    parser.add_argument(
+        '-V',
+        '--version',
+        action='version',
+        version='%(prog)s v{}'.format(options.version))
     parser.set_defaults(func=default)
     subparsers = parser.add_subparsers()
 
     # TODO: add child parsers that handle the individual actions
-    build_parser = subparsers.add_parser('build', description='Build an image')
-    build_parser.add_argument('-i', '--image', default=options.image, help='override the tagged name of the image being built')
-    build_parser.add_argument('--dockerfile', default=options.dockerfile, help='override the dockerfile used to build the image')
-    build_parser.add_argument('--no-cache', action='store_true', help='do not use the cache')
-    build_parser.add_argument('--no-rm', action='store_false', help='do not remove any images, even on success')
-    build_parser.add_argument('--no-verify', action='store_true', help='do not check the validity of the registry\'s SSL cert')
-    build_parser.add_argument('--pull', action='store_const', const=True, help='pull the image from upstream')
-    build_parser.add_argument('--no-pull', action='store_const', const=False, dest='pull', help='do not pull newer versions of the base image')
+    build_parser = subparsers.add_parser(
+        'build',
+        description='Build an image',
+        parents=[shared_parser, service_parser])
     build_parser.set_defaults(func=build)
 
-    buildprod_parser = subparsers.add_parser('build-prod', description='''Build a
-            production image. This is the option used by Jenkins. No other options
-            will be specified, so pick good defaults. Writes a file IMAGES.txt
-            which is a newline delimited file of the images that should be pushed
-            to the registry.''')
-    buildprod_parser.add_argument('-i', '--image', default=options.image, help='override the tagged name of the image being built')
-    buildprod_parser.add_argument('--no-cache', default=True, action='store_true', help='allow the build to use the cache')
-    buildprod_parser.add_argument('--no-pull', action='store_const', const=False, dest='pull', help='do not pull newer versions of the base image')
+    buildprod_parser = subparsers.add_parser(
+        'build-prod',
+        description='''Build a production image. This is the option used by
+            Jenkins. No other options will be specified, so pick good defaults.
+            Writes a file IMAGES.txt which is a newline delimited file of the
+            images that should be pushed to the registry.''',
+        parents=[shared_parser, service_parser])
     buildprod_parser.set_defaults(func=build_prod)
 
-    start_parser = subparsers.add_parser('start', description='start a container using an image')
-    start_parser.add_argument('-n', '--name', help='the name to give to the container')
-    start_parser.add_argument('-i', '--image', help='override the tagged name of the image being built')
-    start_parser.add_argument('--no-volumes', action='store_true', help='override the volumes mentioned in the Controlfile')
+    start_parser = subparsers.add_parser(
+        'start',
+        description='start a container using an image',
+        parents=[shared_parser])
     start_parser.set_defaults(func=start)
 
-    stop_parser = subparsers.add_parser('stop', description='stop a container. This will inform docker to remove volumes that it can remove')
-    stop_parser.add_argument('-f', '--force', action='store_true', help='Do not wait for the container to gracefully shut down')
-    stop_parser.add_argument('-w', '--wipe', action='store_true', help='Make sure that volumes are empty after stopping. May require sudo. THIS IS EXTREMELY DANGEROUS')
+    stop_parser = subparsers.add_parser(
+        'stop',
+        description='''stop a container. This will inform docker to remove
+            volumes that it can remove''',
+        parents=[shared_parser, service_parser])
     stop_parser.set_defaults(func=stop)
 
-    restart_parser = subparsers.add_parser('restart', description='remove a container, and start it up again')
-    restart_parser.add_argument('-f', '--force', action='store_true', help='Do not wait for the container to gracefully shut down')
-    restart_parser.add_argument('-n', '--name', help='the name to give to the container')
-    restart_parser.add_argument('-i', '--image', help='override the tagged name of the image being built')
-    restart_parser.add_argument('-w', '--wipe', action='store_true', help='Make sure that volumes are empty after stopping. May require sudo. THIS IS EXTREMELY DANGEROUS')
-    restart_parser.add_argument('--no-volumes', action='store_true', help='override the volumes mentioned in the Controlfile')
+    restart_parser = subparsers.add_parser(
+        'restart',
+        description='remove a container, and start it up again',
+        parents=[shared_parser, service_parser])
     restart_parser.set_defaults(func=restart)
     parser.parse_args(args, namespace=options)
 
@@ -317,6 +328,7 @@ def main(args):
         console_loghandler.setLevel(logging.INFO)
     module_logger.addHandler(console_loghandler)
     module_logger.debug("switching to debug logging")
+    module_logger.debug(vars(options))
 
     # Read in a Controlfile if one exists
     ctrlfile_location = options.controlfile
@@ -326,22 +338,11 @@ def main(args):
         module_logger.info("That's it")
     else:
         module_logger.info(ctrl.services)
+    if len(options.services) < 1:
+        options.services = ctrl.services['required']['services']
+    module_logger.debug(vars(options))
 
-    if os.path.isfile('Controlfile'):
-        with open('Controlfile', 'r') as f:
-            try:
-                vars(options).update(json.load(f))
-            except json.decoder.JSONDecodeError as e:
-                err('Malformed Controlfile. Not valid JSON: {}'.format(str(e)))
-                sys.exit(2)
-    else:
-        # TODO: When, eventually, you have to do parsing to override defaults and
-        # you move to configparser, change this to print conditionally
-        print('No Controlfile. Proceeding with defaults')
+    ret = options.func(options, ctrl)
 
-    if options.debug:
-        print('options={}'.format(vars(options)))
-
-    ret = options.func(options)
     if not ret:
         sys.exit(1)
