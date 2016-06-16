@@ -44,37 +44,6 @@ class Controlfile:
 
         self.open_discovered_controlfile(controlfile_location, options={})
 
-        # try:
-        #     with open(controlfile_location, 'r') as controlfile:
-        #         data = json.load(controlfile)
-        #         if 'services' in data:
-        #             self.control.update(data)
-        #         else:
-        #             if 'service' in data:
-        #                 service_name = data['service']
-        #             elif 'container' in data and 'name' in data['container']:
-        #                 service_name = data['container']['name']
-        #             elif 'container' in data and 'hostname' in data['container']:
-        #                 service_name = data['container']['hostname']
-        #             else:
-        #                 raise NameMissingFromService
-        #             self.control['services'][service_name] = data
-        #             self.control['services']['all']['services'].append(service_name)
-        #             # TODO check if the service is in fact required
-        #             self.control['services']['required']['services'].append(service_name)
-        # except FileNotFoundError as error:
-        #     self.logger.critical('Controlfile does not exist: %s', error)
-        #     raise
-        # except json.decoder.JSONDecodeError as error:
-        #     self.logger.critical('Could not parse Controlfile as JSON: %s', error)
-        #     raise InvalidControlfile
-        # dirname = os.path.dirname(controlfile_location)
-        # for service in (s for s in self.control['services'] if 'controlfile' in s):
-        #     file_location = '{}/{}'.format(dirname, service['controlfile'])
-        #     with open(file_location, 'r') as ctrlfile:
-        #         data = json.load(ctrlfile)
-        #         service.update(data)
-
     def open_discovered_controlfile(self, location, options):
         """
         Open a file, discover what kind of Controlfile it is, and hand off
@@ -159,14 +128,6 @@ def satisfy_nested_options(outer, inner):
     - Merges appends by having "{{layer_two}}{{layer_one}}"
     - Merges option additions with layer_one.push(layer_two)
     """
-    def append(left, right):
-        """append right onto left"""
-        return '{}{}'.format(left, right)
-
-    def prepend(left, right):
-        """Prefix right before left"""
-        return '{}{}'.format(right, left)
-
     merged = {}
     for key in set(outer.keys()) | set(inner.keys()):
         ops = set(outer.get(key, {}).keys()) | set(inner.get(key, {}).keys())
@@ -174,8 +135,8 @@ def satisfy_nested_options(outer, inner):
         # apply outer suffix and prefix to the inner union
         if 'union' in ops:
             inner_union = [
-                prepend(
-                    append(
+                operations['prefix'](
+                    operations['suffix'](
                         x,
                         outer.get(key, {}).get('suffix', '')),
                     outer.get(key, {}).get('prefix', ''))
@@ -183,24 +144,14 @@ def satisfy_nested_options(outer, inner):
             if inner_union != []:
                 val['union'] = set(inner_union) | set(outer.get(key, {}).get('union', []))
         if 'suffix' in ops:
-            suffix = append(inner.get(key, {}).get('suffix', ''),
-                            outer.get(key, {}).get('suffix', ''))
+            suffix = operations['suffix'](inner.get(key, {}).get('suffix', ''),
+                                          outer.get(key, {}).get('suffix', ''))
             if suffix != '':
                 val['suffix'] = suffix
         if 'prefix' in ops:
-            prefix = prepend(inner.get(key, {}).get('prefix', ''),
-                             outer.get(key, {}).get('prefix', ''))
+            prefix = operations['prefix'](inner.get(key, {}).get('prefix', ''),
+                                          outer.get(key, {}).get('prefix', ''))
             if prefix != '':
                 val['prefix'] = prefix
         merged[key] = val
     return merged
-
-    # if 'append' in outer or 'append' in inner:
-    #     if 'append' not in merged:
-    #         merged['append'] = {}
-    #     for key in set(outer.get('append', {}).keys()).union(
-    #             set(inner.get('append', {}))):
-    #         merged['append'][key] = append(
-    #             merged.get('append', {}).get(key, ''),
-    #             inner.get('append', {}).get(key, ''))
-    # TODO: Also do prepend, and general options

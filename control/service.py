@@ -95,7 +95,8 @@ class Service:
         'env': 'environment'
     }
 
-    all_options = (container_options |
+    all_options = (service_options |
+                   container_options |
                    host_config_options |
                    abbreviations.keys() |
                    {'volumes'})
