@@ -1,10 +1,8 @@
 """Read in Controlfiles"""
 import json
 import logging
-import os
 
 from control.service import Service
-from control.exceptions import NameMissingFromService, InvalidControlfile
 
 module_logger = logging.getLogger('control.controlfile')
 
@@ -62,15 +60,30 @@ class Controlfile:
         try:
             with open(location, 'r') as controlfile:
                 data = json.load(controlfile)
-                if set(data.keys()) & {'services', 'options'} != set():
-                    raise NotImplementedError
+                # if set(data.keys()) & {'services', 'options'} != set():
+                #     raise NotImplementedError
         except FileNotFoundError as error:
             self.logger.warning("Cannot open controlfile %s", location)
         except json.decoder.JSONDecodeError as error:
             self.logger.warning("Controlfile %s is malformed: %s", location, error)
+        preprocessed_services = []
+        opers = {}
+        if 'services' in data.keys():
+            for sname, sdata in (
+                    (k, v)
+                    for k, v in data['services'].items() if 'controlfile' in v):
+                preprocessed_services.append(
+                    open_servicefile(sname, sdata['controlfile']))
+            for sname, sdata in (
+                    (k, v)
+                    for k, v in data['services'].items() if 'controlfile' not in v):
+                sdata['service'] = sname
+                preprocessed_services.append(Service(sdata, controlfile))
+            opers = satisfy_nested_options(options, data.get('options', {}))
         else:
-            serv = Service(data, location)
-            name, service = normalize_service(serv, options)
+            preprocessed_services.append(Service(data, location))
+        for serv in preprocessed_services:
+            name, service = normalize_service(serv, opers)
             self.push_service_into_list(name, service)
 
     def push_service_into_list(self, name, service):
@@ -85,6 +98,7 @@ class Controlfile:
             self.services['optional']['services'].append(name)
         self.services['all']['services'].append(name)
         self.logger.info('added %s to the service list', name)
+        self.logger.debug(self.services[name].__dict__)
 
     def get_list_of_services(self):
         """
@@ -96,8 +110,21 @@ class Controlfile:
             [s['service'] for s in self.control['services'] if 'service' in s])
 
 
+def open_servicefile(service, location):
+    """
+    Read in a service from a Controlfile that defines only a single service
+    This function does not catch exceptions. It is the caller's
+    responsibility to catch FileNotFoundError and JSONDecoderError.
+    """
+    with open(location, 'r') as controlfile:
+        data = json.load(controlfile)
+    data['service'] = service
+    serv = Service(data, location)
+    return serv
+
+
 # TODO: eventually the global options will go away, switch this back to options then
-def normalize_service(service, opers={}):
+def normalize_service(service, opers):
     """
     Takes a service, and options and applies the transforms to the service.
 
