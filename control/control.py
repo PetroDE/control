@@ -40,7 +40,6 @@ import docker
 
 from control.options import options
 from control.dclient import dclient
-from control.shittylogging import err, log
 from control.container import Container, CreatedContainer
 from control.controlfile import Controlfile
 from control.registry import Registry
@@ -51,24 +50,24 @@ module_logger.setLevel(logging.DEBUG)
 
 
 def image_is_newer(base):  # TODO: finish
-    log('is_image_newer', level='debug')
+    module_logger.debug('is_image_newer')
     if base.image == 'scratch':
-        err('Control does not handle building FROM scratch yet')
+        module_logger.critical('Control does not handle building FROM scratch yet')
         sys.exit(1)
     elif not base.registry:
         return True  # Giving up on any kind of intelligence in dealing with the Hub.
 
-    log('Contacting registry at {}'.format(base.registry), level='debug')
+    module_logger.debug('Contacting registry at %s', base.registry)
     reg = Registry(base.domain, base.port)
     try:
         remote_date = dup.parse(reg.get_build_date_of_repo(base))
     except ValueError:
-        log('Image does not exist in registry', level='warn')
+        module_logger.warning('Image does not exist in registry')
         return False
     try:
         local_date = dup.parse(dclient.inspect_image(base.repo)['Created'])
     except docker.errors.NotFound:
-        log('Image does not exist locally', level='warn')
+        module_logger.warning('Image does not exist locally')
         return True
     return remote_date > local_date
 
@@ -80,7 +79,10 @@ def pulling(repo):
 
     if options.pull is False:  # We actually do need to check the difference of None and False
         return False
-    elif options.func.__name__ in ['default', 'build'] and not repo.registry and not options.pull:
+    elif (
+            options.func.__name__ in ['default', 'build'] and
+            not repo.registry and
+            not options.pull):
         return False
     return True
 
@@ -103,8 +105,8 @@ def container_exists(container):
 
 
 def print_formatted(line):
-    if options.debug:
-        print('bytes: {}'.format(line))
+    """Strip off all the useless stuff that Docker doesn't bother to parse out."""
+    module_logger.debug('bytes: %s', line)
     if len(line) == 1:
         print(list(line.values())[0].strip())
         return
@@ -118,40 +120,38 @@ def print_formatted(line):
 def build(args, ctrl):  # TODO: DRY it up
     module_logger.debug('running docker build')
 
-    # for serv in args.services
-    #     module_logger.info('building %s', serv)
+    for name, service in ((name, ctrl.services[name]) for name in args.services):
+        module_logger.info('building %s', name)
+        if os.path.isfile(service['dockerfile']):
+            with open(service['dockerfile'], 'r') as f:
+                for line in f:
+                    if line.startswith('FROM'):
+                        upstream = Repository.match(line.split()[1])
+                        module_logger.debug('discovered upstream as %s', upstream)
+                        break
+        else:
+            module_logger.warning('Dockerfile does not exist\nNot continuing with this service')
+            continue
 
-    if not hasattr(args, 'image') or not args.image:
-        err('No image name was specified. Edit your Controlfile or specify with -i')
-        sys.exit(3)
-    if os.path.isfile(args.dockerfile):
-        with open(args.dockerfile, 'r') as f:
-            for line in f:
-                if line.startswith('FROM'):
-                    upstream = Repository.match(line.split()[1])
-                    break
-    else:
-        err('Dockerfile does not exist')
-        sys.exit(3)
-    if pulling(upstream) and image_is_newer(upstream):
-        log('pulling upstream', level='debug')
-        for line in (json.loads(l.decode('utf-8').strip()) for l in dclient.pull(
-                stream=True,
-                repository=upstream.get_pull_image_name(),
-                tag=upstream.tag)):
-            print_formatted(line)
-    if not args.dry_run:
-        for line in (json.loads(l.decode('utf-8').strip()) for l in dclient.build(
-                path='.',
-                tag=args.image,
-                nocache=args.no_cache,
-                rm=args.no_rm,
-                pull=False,
-                dockerfile=args.dockerfile)):
-            print_formatted(line)
-            if 'error' in line.keys():
-                return False
-    return True
+        if pulling(upstream) and image_is_newer(upstream):
+            module_logger.info('pulling upstream %s', upstream)
+            for line in (json.loads(l.decode('utf-8').strip()) for l in dclient.pull(
+                    stream=True,
+                    repository=upstream.get_pull_image_name(),
+                    tag=upstream.tag)):
+                print_formatted(line)
+        if not args.dry_run:
+            for line in (json.loads(l.decode('utf-8').strip()) for l in dclient.build(
+                    path=os.path.dirname(service['dockerfile']),
+                    tag=service['image'],
+                    nocache=args.no_cache,
+                    rm=args.no_rm,
+                    pull=False,
+                    dockerfile=service['dockerfile'])):
+                print_formatted(line)
+                if 'error' in line.keys():
+                    return False
+        return True
 
 
 def build_prod(args, ctrl):
@@ -160,7 +160,8 @@ def build_prod(args, ctrl):
     if args.debug or args.dry_run:
         print('running docker build')
     if not hasattr(args, 'image') or not args.image:
-        err('No image name was specified. Edit your Controlfile or specify with -i')
+        module_logger.critical(
+            'No image name was specified. Edit your Controlfile or specify with -i')
         sys.exit(3)
     if not args.dry_run:
         for line in (json.loads(l.decode('utf-8').strip()) for l in dclient.build(
@@ -202,8 +203,8 @@ def start(args, ctrl):
         container = container.create()
         container.start()
     except Container.ContainerException as e:
-        log('outer start containerexception caught', level='debug')
-        err(e)
+        module_logger.debug('outer start containerexception caught')
+        module_logger.critical(e)
         exit(1)
     return True
 
@@ -224,7 +225,7 @@ def stop(args, ctrl):
     except Container.DoesNotExist:
         print('{} does not exist.'.format(options.container['name']))
     except Exception as e:
-        log('unexpected error: {}'.format(e), level='error')
+        module_logger.critical('unexpected error: %s', e)
         return False
     return True
 
@@ -264,7 +265,7 @@ def main(args):
     shared_parser.add_argument('-w', '--wipe', action='store_true', help='Make sure that volumes are empty after stopping. May require sudo. THIS IS EXTREMELY DANGEROUS')
     shared_parser.add_argument('--dry-run', action='store_true', help='Pretend to execute actions, but only log that they happened')
     shared_parser.add_argument('--controlfile', default=options.controlfile, help='override the controlfile that lets control know about the services it needs to manage')
-    shared_parser.add_argument('--dockerfile', default=options.dockerfile, help='override the dockerfile used to build the image')
+    shared_parser.add_argument('--dockerfile', help='override the dockerfile used to build the image')
     shared_parser.add_argument('--no-cache', action='store_true', help='do not use the cache')
     shared_parser.add_argument('--pull', action='store_const', const=True, dest='pull', help='pull the image from upstream')
     shared_parser.add_argument('--no-pull', action='store_const', const=False, dest='pull', help='do not pull newer versions of the base image')
@@ -322,6 +323,10 @@ def main(args):
     restart_parser.set_defaults(func=restart)
     parser.parse_args(args, namespace=options)
 
+    if not dclient:
+        print('Docker is not running. Please start docker.', file=sys.stderr)
+        sys.exit(2)
+
     if options.debug:
         console_loghandler.setLevel(logging.DEBUG)
     else:
@@ -340,6 +345,17 @@ def main(args):
         module_logger.info(ctrl.services)
     if len(options.services) < 1:
         options.services = ctrl.services['required']['services']
+
+    if options.image and len(options.services) == 1:
+        ctrl.services[options.services[0]]['image'] = options.image
+        module_logger.debug(vars(ctrl.services[options.services[0]]))
+    elif options.image and len(options.services) > 1:
+        module_logger.info('Ignoring image specified in arguments. Too many services.')
+    if options.dockerfile and len(options.services) == 1:
+        ctrl.services[options.services[0]]['dockerfile'] = options.image
+        module_logger.debug(vars(ctrl.services[options.services[0]]))
+    elif options.dockerfile and len(options.services) > 1:
+        module_logger.info('Ignoring dockerfile specified in arguments. Too many services.')
     module_logger.debug(vars(options))
 
     ret = options.func(options, ctrl)
