@@ -26,9 +26,6 @@ class Controlfile:
         """
         self.logger = logging.getLogger('control.controlfile.Controlfile')
         self.services = {
-            "all": {
-                "services": []
-            },
             "required": {
                 "services": []
             },
@@ -40,9 +37,9 @@ class Controlfile:
         # TODO: make sure to test when there is no Controlfile and catch
         #       that error
 
-        self.open_discovered_controlfile(controlfile_location, options={})
+        self.open_discovered_controlfile(controlfile_location, 'all', {})
 
-    def open_discovered_controlfile(self, location, options):
+    def open_discovered_controlfile(self, location, service, options):
         """
         Open a file, discover what kind of Controlfile it is, and hand off
         handling it to the correct function.
@@ -67,21 +64,29 @@ class Controlfile:
         except json.decoder.JSONDecodeError as error:
             self.logger.warning("Controlfile %s is malformed: %s", location, error)
         preprocessed_services = []
+        discovered = []
         opers = {}
         if 'services' in data.keys():
+            opers = satisfy_nested_options(options, data.get('options', {}))
             for sname, sdata in (
                     (k, v)
                     for k, v in data['services'].items() if 'controlfile' in v):
-                preprocessed_services.append(
-                    open_servicefile(sname, sdata['controlfile']))
+                discovered = self.open_discovered_controlfile(
+                    sdata['controlfile'],
+                    sname,
+                    opers)
+                # preprocessed_services.append(
+                #     open_servicefile(sname, sdata['controlfile']))
             for sname, sdata in (
                     (k, v)
                     for k, v in data['services'].items() if 'controlfile' not in v):
                 sdata['service'] = sname
+                discovered.append(sname)
                 preprocessed_services.append(Service(sdata, controlfile))
-            opers = satisfy_nested_options(options, data.get('options', {}))
         else:
-            preprocessed_services.append(Service(data, location))
+            serv = Service(data, location)
+            discovered.append(serv.service)
+            preprocessed_services.append(serv)
         for serv in preprocessed_services:
             name, service = normalize_service(serv, opers)
             self.push_service_into_list(name, service)

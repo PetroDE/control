@@ -18,6 +18,34 @@ from control.exceptions import InvalidControlfile
 module_logger = logging.getLogger('control.service')
 
 
+class MultiService:
+    """
+    Don't crash if someone asks for something that goes in the Service class,
+    But, hold a list of services.
+    """
+    def __init__(self, svcs):
+        self.services = svcs
+
+    def __getattr__(self, value):
+        if value in Service.all_options:
+            return None
+        raise AttributeError
+
+    def __len__(self):
+        return 0
+
+    def __getitem__(self, value):
+        if value in Service.all_options:
+            return None
+        raise KeyError
+
+    def __setitem__(self, key, value):
+        raise KeyError(key)
+
+    def __delitem__(self, key):
+        raise KeyError(key)
+
+
 class Service:
     """
     Service is a bit of an odd bird. It started as just a dict that held the
@@ -53,6 +81,7 @@ class Service:
 
     Attributes:
     - service
+    - services: used to keep track of this metaservice's services
     - image
     - expected_timeout
     - required
@@ -71,7 +100,8 @@ class Service:
         'host_config',
         'image',
         'required',
-        'service'
+        'service',
+        'services'
     }
     host_config_options = (
         set(create_host_config.__code__.co_varnames) -
