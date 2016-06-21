@@ -103,7 +103,6 @@ class Service:
 
     def __init__(self, service, controlfile):
         self.logger = logging.getLogger('control.service.Service')
-        self.service = ""
         self.dockerfile = ""
         self.container = {}
         self.host_config = {}
@@ -226,15 +225,17 @@ class Service:
         After we've read in the whole service, we go in and fill in spots that
         might have been left blank.
 
-        - hastname <= from service name
+        - hostname <= from service name
         """
         # Set the container's hostname based on guesses
         if len(self.container) > 0 and 'hostname' not in self.container:
             self['hostname'] = self['name']
         # Guess that there's a Dockerfile next to the Controlfile
-        dockerfile = os.path.dirname(self.controlfile) + '/Dockerfile'
+        directory = os.path.dirname(os.path.abspath(self.controlfile))
+        dockerfile = directory + '/Dockerfile'
         if os.path.isfile(dockerfile):
             self.dockerfile = dockerfile
+            self.logger.debug('setting dockerfile: %s', self.dockerfile)
 
 
 def _split_volumes(volumes):
