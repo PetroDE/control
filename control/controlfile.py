@@ -41,29 +41,14 @@ class Controlfile:
         """
         self.logger = logging.getLogger('control.controlfile.Controlfile')
         self.services = {
-            "required": MetaService(),
-            "optional": MetaService()
+            "required": MetaService({'service': 'required', 'required': True}),
+            "optional": MetaService({'service': 'optional', 'required': False})
         }
 
-        # TODO: make sure to test when there is no Controlfile and catch
-        #       that error
-        # self.open_discovered_controlfile(controlfile_location, 'all', {})
-
-        # Read in a file
-            # Discover if it is a metaservice
-            # If yes:
-                # for each service:
-                    # discover if it is a metaservice
-                    # if yes: recurse
-                    # if no:
-                        # If it references a Controlfile, Read in file
-                        # Create service
-                        # Push service into (required|optional), metaservice, all
-            # If no:
-                # Create service
-                # Push service into (required|optional), all
-
         data = self.read_in_file(controlfile_location)
+        if 'services' not in data:
+            serv = UniService(data, controlfile_location)
+            data = {"services": {serv.service: data}}
         self.create_service(data, 'all', {}, controlfile_location)
 
     def read_in_file(self, controlfile):
@@ -87,11 +72,11 @@ class Controlfile:
         data['service'] = service_name
 
         services_in_data = 'services' in data
-        services_is_list = type(data.get('services', None) is list
+        services_is_list = isinstance(data.get('services', None), list)
         if services_in_data and services_is_list:
             metaservice = MetaService(data)
             metaservice.services = data['services']
-            self.push_service_into_list(metaservice)
+            self.push_service_into_list(metaservice.service, metaservice)
             return []
         elif services_in_data:
             metaservice = MetaService(data)
@@ -100,62 +85,11 @@ class Controlfile:
                 metaservice.services += self.create_service(serv, name, opers, ctrlfile)
             self.push_service_into_list(metaservice.service, metaservice)
             return metaservice.services
-        serv = UniService(data, ctrlfile)
-        name, service = normalize_service(serv, opers)
-        self.push_service_into_list(name, service)
-        return [name]
-
-    # def open_discovered_controlfile(self, location, service, options):
-    #     """
-    #     Open a file, discover what kind of Controlfile it is, and hand off
-    #     handling it to the correct function.
-
-    #     Any paths found to be relative will be expanded out to be full paths.
-    #     This way controlfile paths will be kept correct, and mount points will
-    #     map correctly.
-
-    #     There will be two handlers:
-    #     - Complex Controlfile: Has append rules, options for all containers in
-    #       the services list, a list of services that potentially references
-    #       other Complex or Leaf Controlfiles
-    #     - Leaf/Service Controlfile: defines only a single service
-    #     """
-    #     try:
-    #         with open(location, 'r') as controlfile:
-    #             data = json.load(controlfile)
-    #             # if set(data.keys()) & {'services', 'options'} != set():
-    #             #     raise NotImplementedError
-    #     except FileNotFoundError as error:
-    #         self.logger.warning("Cannot open controlfile %s", location)
-    #     except json.decoder.JSONDecodeError as error:
-    #         self.logger.warning("Controlfile %s is malformed: %s", location, error)
-    #     preprocessed_services = []
-    #     discovered = []
-    #     opers = {}
-    #     if 'services' in data.keys():
-    #         opers = satisfy_nested_options(options, data.get('options', {}))
-    #         for sname, sdata in (
-    #                 (k, v)
-    #                 for k, v in data['services'].items() if 'controlfile' in v):
-    #             discovered = self.open_discovered_controlfile(
-    #                 sdata['controlfile'],
-    #                 sname,
-    #                 opers)
-    #             # preprocessed_services.append(
-    #             #     open_servicefile(sname, sdata['controlfile']))
-    #         for sname, sdata in (
-    #                 (k, v)
-    #                 for k, v in data['services'].items() if 'controlfile' not in v):
-    #             sdata['service'] = sname
-    #             discovered.append(sname)
-    #             preprocessed_services.append(UniService(sdata, controlfile))
-    #     else:
-    #         serv = UniService(data, location)
-    #         discovered.append(serv.service)
-    #         preprocessed_services.append(serv)
-    #     for serv in preprocessed_services:
-    #         name, service = normalize_service(serv, opers)
-    #         self.push_service_into_list(name, service)
+        else:
+            serv = UniService(data, ctrlfile)
+            name, service = normalize_service(serv, options)
+            self.push_service_into_list(name, service)
+            return [name]
 
     def push_service_into_list(self, name, service):
         """
@@ -167,8 +101,13 @@ class Controlfile:
             self.services['required'].append(name)
         else:
             self.services['optional'].append(name)
-        self.logger.info('added %s to the service list', name)
-        self.logger.debug(self.services[name].__dict__)
+        self.logger.debug('added %s to the service list', name)
+        self.logger.log(9, self.services[name].__dict__)
+
+    def required_services(self):
+        """Return the list of required services"""
+        return [s for s in self.services['required'].services
+                if isinstance(self.services[s], UniService)]
 
     def get_list_of_services(self):
         """
@@ -211,8 +150,8 @@ def normalize_service(service, opers):
             (key, op, val)
             for key, ops in opers.items()
             for op, val in ops.items() if op in operations.keys()):
-        module_logger.debug("service '%s' %sing %s with %s. %s",
-                            service.name, op, key, val, service)
+        module_logger.log(11, "service '%s' %sing %s with '%s'. %s",
+                          service.service, op, key, val, service)
         service[key] = operations[op](service[key], val)
     return service['service'], service
 

@@ -119,6 +119,13 @@ def print_formatted(line):
 
 def build(args, ctrl):  # TODO: DRY it up
     module_logger.debug('running docker build')
+    print('building services: {}'.format(", ".join(sorted(args.services))))
+
+    module_logger.debug('all services discovered: %s', ctrl.services.keys())
+    module_logger.debug(ctrl.services['all'])
+    module_logger.debug(ctrl.services['required'])
+    # module_logger.debug(ctrl.services['cserver'].__dict__)
+    sys.exit(4)
 
     for name, service in ((name, ctrl.services[name]) for name in args.services):
         module_logger.info('building %s', name)
@@ -341,21 +348,24 @@ def main(args):
         ctrl = Controlfile(ctrlfile_location)
     except NotImplementedError:
         module_logger.info("That's it")
-    else:
-        module_logger.info(ctrl.services)
-    if len(options.services) < 1:
-        options.services = ctrl.services['required']['services']
 
+    # If no services were specified on the command line, default to required
+    if len(options.services) == 0:
+        options.services = ctrl.required_services()
+
+    # Override image name if only one service discovered
     if options.image and len(options.services) == 1:
         ctrl.services[options.services[0]]['image'] = options.image
         module_logger.debug(vars(ctrl.services[options.services[0]]))
     elif options.image and len(options.services) > 1:
         module_logger.info('Ignoring image specified in arguments. Too many services.')
+    # Override dockerfile location if only one service discovered
     if options.dockerfile and len(options.services) == 1:
         ctrl.services[options.services[0]]['dockerfile'] = options.image
         module_logger.debug(vars(ctrl.services[options.services[0]]))
     elif options.dockerfile and len(options.services) > 1:
         module_logger.info('Ignoring dockerfile specified in arguments. Too many services.')
+
     module_logger.debug(vars(options))
 
     ret = options.func(options, ctrl)
