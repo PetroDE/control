@@ -104,6 +104,17 @@ class UniService(Service):
                    abbreviations.keys() |
                    {'volumes'})
 
+    defaults = {
+        "dns": [],
+        "dns_search": [],
+        "volumes_from": [],
+        "devices": [],
+        "command": [],
+        "ports": [],
+        "environment": [],
+        "entrypoint": []
+    }
+
     def __init__(self, service, controlfile):
         self.logger = logging.getLogger('control.service.Service')
         self.dockerfile = ""
@@ -178,18 +189,21 @@ class UniService(Service):
         return len(self.container) + len(self.host_config)
 
     def __getitem__(self, key):
+        try:
+            key = self.abbreviations[key]
+        except KeyError:
+            pass  # We don't really care if you aren't using an abbrev
+            # we just don't want to branch to do this replacement
+
         if key == 'volumes':
             return (self.container.get('volumes', []) +
                     self.host_config.get('binds', []))
-        elif key in self.abbreviations.keys():
-            key = self.abbreviations[key]
-        try:
-            return self.container[key]
-        except KeyError:
-            try:
-                return self.host_config[key]
-            except KeyError:
-                return self.__dict__[key]
+        elif key in self.container_options:
+            return self.container.get(key, self.defaults.get(key, ''))
+        elif key in self.host_config_options:
+            return self.host_config.get(key, self.defaults.get(key, ''))
+        else:
+            return self.__dict__[key]
 
     def __setitem__(self, key, value):
         if key in self.abbreviations.keys():
