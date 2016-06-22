@@ -14,39 +14,12 @@ from docker.api import ContainerApiMixin
 from control.dclient import dclient
 from control.repository import Repository
 from control.exceptions import InvalidControlfile
+from control.service.service import Service
 
 module_logger = logging.getLogger('control.service')
 
 
-class MultiService:
-    """
-    Don't crash if someone asks for something that goes in the Service class,
-    But, hold a list of services.
-    """
-    def __init__(self, svcs):
-        self.services = svcs
-
-    def __getattr__(self, value):
-        if value in Service.all_options:
-            return None
-        raise AttributeError
-
-    def __len__(self):
-        return 0
-
-    def __getitem__(self, value):
-        if value in Service.all_options:
-            return None
-        raise KeyError
-
-    def __setitem__(self, key, value):
-        raise KeyError(key)
-
-    def __delitem__(self, key):
-        raise KeyError(key)
-
-
-class Service:
+class UniService(Service):
     """
     Service is a bit of an odd bird. It started as just a dict that held the
     configuration for a container, and anything that needed to modify it would
@@ -139,6 +112,7 @@ class Service:
         self.expected_timeout = 10
 
         serv = deepcopy(service)
+        Service.__init__(self, serv)
 
         # This is the one thing you actually have to have defined in a
         # Controlfile
@@ -155,17 +129,12 @@ class Service:
 
         # Handle the things that we have special requirements to handle
         # Set the service name
-        if 'service' in service:
-            self.service = serv.pop('service')
-        elif 'name' in container_config:
+        service_empty = self.service == ""
+        if service_empty and 'name' in container_config:
             self.service = container_config['name']
-        else:
+        elif service_empty:
             self.service = Repository.match(self.image).image
         # Set whether the service is required
-        try:
-            self.required = serv.pop('required')
-        except KeyError:
-            self.required = not serv.pop('optional', False)
         # Record the controlfile that this service came from
         self.controlfile = serv.pop('controlfile', controlfile)
 

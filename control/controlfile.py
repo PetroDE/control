@@ -2,7 +2,7 @@
 import json
 import logging
 
-from control.service import Service
+from control.service import MetaService, UniService
 
 module_logger = logging.getLogger('control.controlfile')
 
@@ -14,7 +14,22 @@ operations = {
 
 
 class Controlfile:
-    """A holder for a normalized controlfile"""
+    """
+    A structure for a normalized controlfile
+
+    A Controlfile is a structure that holds information about services,
+    a list of transforms, and a list of variables that can be substituted
+    into the services.
+
+    There are two kinds of services that Control handles. The first is
+    the definition of a service, how to build an image and how to start
+    containers based on that image. The second is a metaservice that
+    allows you to specify a list of the first kind of services to
+    handle in a batch, and allows you to define a list of transforms to
+    those service, and a list of variables that may be substituted into
+    the service definitions. These will be referred to as a Uniservice
+    and a Metaservice, respectively.
+    """
 
     def __init__(self, controlfile_location):
         """
@@ -26,70 +41,121 @@ class Controlfile:
         """
         self.logger = logging.getLogger('control.controlfile.Controlfile')
         self.services = {
-            "required": {
-                "services": []
-            },
-            "optional": {
-                "services": []
-            }
+            "required": MetaService(),
+            "optional": MetaService()
         }
 
         # TODO: make sure to test when there is no Controlfile and catch
         #       that error
+        # self.open_discovered_controlfile(controlfile_location, 'all', {})
 
-        self.open_discovered_controlfile(controlfile_location, 'all', {})
+        # Read in a file
+            # Discover if it is a metaservice
+            # If yes:
+                # for each service:
+                    # discover if it is a metaservice
+                    # if yes: recurse
+                    # if no:
+                        # If it references a Controlfile, Read in file
+                        # Create service
+                        # Push service into (required|optional), metaservice, all
+            # If no:
+                # Create service
+                # Push service into (required|optional), all
 
-    def open_discovered_controlfile(self, location, service, options):
-        """
-        Open a file, discover what kind of Controlfile it is, and hand off
-        handling it to the correct function.
+        data = self.read_in_file(controlfile_location)
+        self.create_service(data, 'all', {}, controlfile_location)
 
-        Any paths found to be relative will be expanded out to be full paths.
-        This way controlfile paths will be kept correct, and mount points will
-        map correctly.
-
-        There will be two handlers:
-        - Complex Controlfile: Has append rules, options for all containers in
-          the services list, a list of services that potentially references
-          other Complex or Leaf Controlfiles
-        - Leaf/Service Controlfile: defines only a single service
-        """
+    def read_in_file(self, controlfile):
+        """Open a file, read it if it's json, complain otherwise"""
         try:
-            with open(location, 'r') as controlfile:
-                data = json.load(controlfile)
-                # if set(data.keys()) & {'services', 'options'} != set():
-                #     raise NotImplementedError
+            with open(controlfile, 'r') as f:
+                data = json.load(f)
         except FileNotFoundError as error:
-            self.logger.warning("Cannot open controlfile %s", location)
+            self.logger.warning("Cannot open controlfile %s", controlfile)
         except json.decoder.JSONDecodeError as error:
-            self.logger.warning("Controlfile %s is malformed: %s", location, error)
-        preprocessed_services = []
-        discovered = []
-        opers = {}
-        if 'services' in data.keys():
-            opers = satisfy_nested_options(options, data.get('options', {}))
-            for sname, sdata in (
-                    (k, v)
-                    for k, v in data['services'].items() if 'controlfile' in v):
-                discovered = self.open_discovered_controlfile(
-                    sdata['controlfile'],
-                    sname,
-                    opers)
-                # preprocessed_services.append(
-                #     open_servicefile(sname, sdata['controlfile']))
-            for sname, sdata in (
-                    (k, v)
-                    for k, v in data['services'].items() if 'controlfile' not in v):
-                sdata['service'] = sname
-                discovered.append(sname)
-                preprocessed_services.append(Service(sdata, controlfile))
+            self.logger.warning("Controlfile %s is malformed: %s", controlfile, error)
         else:
-            serv = Service(data, location)
-            discovered.append(serv.service)
-            preprocessed_services.append(serv)
-        for serv in preprocessed_services:
-            name, service = normalize_service(serv, opers)
-            self.push_service_into_list(name, service)
+            return data
+        return None
+
+    def create_service(self, data, service_name, options, ctrlfile):
+        """determine if data is a Metaservice or Uniservice"""
+        while 'controlfile' in data:
+            ctrlfile = data['controlfile']
+            data = self.read_in_file(ctrlfile)
+        data['service'] = service_name
+
+        services_in_data = 'services' in data
+        services_is_list = type(data.get('services', None) is list
+        if services_in_data and services_is_list:
+            metaservice = MetaService(data)
+            metaservice.services = data['services']
+            self.push_service_into_list(metaservice)
+            return []
+        elif services_in_data:
+            metaservice = MetaService(data)
+            opers = satisfy_nested_options(outer=options, inner=data.get('options', {}))
+            for name, serv in data['services'].items():
+                metaservice.services += self.create_service(serv, name, opers, ctrlfile)
+            self.push_service_into_list(metaservice.service, metaservice)
+            return metaservice.services
+        serv = UniService(data, ctrlfile)
+        name, service = normalize_service(serv, opers)
+        self.push_service_into_list(name, service)
+        return [name]
+
+    # def open_discovered_controlfile(self, location, service, options):
+    #     """
+    #     Open a file, discover what kind of Controlfile it is, and hand off
+    #     handling it to the correct function.
+
+    #     Any paths found to be relative will be expanded out to be full paths.
+    #     This way controlfile paths will be kept correct, and mount points will
+    #     map correctly.
+
+    #     There will be two handlers:
+    #     - Complex Controlfile: Has append rules, options for all containers in
+    #       the services list, a list of services that potentially references
+    #       other Complex or Leaf Controlfiles
+    #     - Leaf/Service Controlfile: defines only a single service
+    #     """
+    #     try:
+    #         with open(location, 'r') as controlfile:
+    #             data = json.load(controlfile)
+    #             # if set(data.keys()) & {'services', 'options'} != set():
+    #             #     raise NotImplementedError
+    #     except FileNotFoundError as error:
+    #         self.logger.warning("Cannot open controlfile %s", location)
+    #     except json.decoder.JSONDecodeError as error:
+    #         self.logger.warning("Controlfile %s is malformed: %s", location, error)
+    #     preprocessed_services = []
+    #     discovered = []
+    #     opers = {}
+    #     if 'services' in data.keys():
+    #         opers = satisfy_nested_options(options, data.get('options', {}))
+    #         for sname, sdata in (
+    #                 (k, v)
+    #                 for k, v in data['services'].items() if 'controlfile' in v):
+    #             discovered = self.open_discovered_controlfile(
+    #                 sdata['controlfile'],
+    #                 sname,
+    #                 opers)
+    #             # preprocessed_services.append(
+    #             #     open_servicefile(sname, sdata['controlfile']))
+    #         for sname, sdata in (
+    #                 (k, v)
+    #                 for k, v in data['services'].items() if 'controlfile' not in v):
+    #             sdata['service'] = sname
+    #             discovered.append(sname)
+    #             preprocessed_services.append(UniService(sdata, controlfile))
+    #     else:
+    #         serv = UniService(data, location)
+    #         discovered.append(serv.service)
+    #         preprocessed_services.append(serv)
+    #     for serv in preprocessed_services:
+    #         name, service = normalize_service(serv, opers)
+    #         self.push_service_into_list(name, service)
 
     def push_service_into_list(self, name, service):
         """
@@ -98,10 +164,9 @@ class Controlfile:
         """
         self.services[name] = service
         if service.required:
-            self.services['required']['services'].append(name)
+            self.services['required'].append(name)
         else:
-            self.services['optional']['services'].append(name)
-        self.services['all']['services'].append(name)
+            self.services['optional'].append(name)
         self.logger.info('added %s to the service list', name)
         self.logger.debug(self.services[name].__dict__)
 
@@ -111,8 +176,7 @@ class Controlfile:
         used to ensure that Controlfile discovery worked correctly in tests,
         and then I decided it could conceivably be useful for Control.
         """
-        return frozenset(
-            [s['service'] for s in self.control['services'] if 'service' in s])
+        return self.services.keys()
 
 
 def open_servicefile(service, location):
@@ -124,7 +188,7 @@ def open_servicefile(service, location):
     with open(location, 'r') as controlfile:
         data = json.load(controlfile)
     data['service'] = service
-    serv = Service(data, location)
+    serv = UniService(data, location)
     return serv
 
 
@@ -150,7 +214,7 @@ def normalize_service(service, opers):
         module_logger.debug("service '%s' %sing %s with %s. %s",
                             service.name, op, key, val, service)
         service[key] = operations[op](service[key], val)
-    return service['name'], service
+    return service['service'], service
 
 
 def satisfy_nested_options(outer, inner):
