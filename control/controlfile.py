@@ -1,9 +1,12 @@
 """Read in Controlfiles"""
+import copy
 import json
 import logging
+import os.path
 
 from control.service import MetaService, UniService
 
+dn = os.path.dirname
 module_logger = logging.getLogger('control.controlfile')
 
 operations = {
@@ -44,12 +47,17 @@ class Controlfile:
             "required": MetaService({'service': 'required', 'required': True}),
             "optional": MetaService({'service': 'optional', 'required': False})
         }
+        variables = {
+            "CONTROL_DIR": dn(dn(dn(os.path.abspath(__file__)))),
+            "CONTROL_PATH": dn(dn(os.path.abspath(__file__)))
+        }
+        variables.update(os.environ)
 
         data = self.read_in_file(controlfile_location)
         if 'services' not in data:
             serv = UniService(data, controlfile_location)
             data = {"services": {serv.service: data}}
-        self.create_service(data, 'all', {}, controlfile_location)
+        self.create_service(data, 'all', {}, variables, controlfile_location)
 
     def read_in_file(self, controlfile):
         """Open a file, read it if it's json, complain otherwise"""
@@ -64,8 +72,15 @@ class Controlfile:
             return data
         return None
 
-    def create_service(self, data, service_name, options, ctrlfile):
-        """determine if data is a Metaservice or Uniservice"""
+    def create_service(self, data, service_name, options, variables, ctrlfile):
+        """
+        Determine if data is a Metaservice or Uniservice
+
+        Variables only exist to be applied if they have been defined up the
+        chain of discovered Controlfiles. You don't get to randomly define a
+        variable somewhere in a web of included Controlfiles and have that
+        apply everywhere.
+        """
         while 'controlfile' in data:
             ctrlfile = data['controlfile']
             data = self.read_in_file(ctrlfile)
@@ -81,8 +96,13 @@ class Controlfile:
         elif services_in_data:
             metaservice = MetaService(data)
             opers = satisfy_nested_options(outer=options, inner=data.get('options', {}))
+            nvars = copy.deepcopy(variables).update(data.get('vars', {}))
             for name, serv in data['services'].items():
-                metaservice.services += self.create_service(serv, name, opers, ctrlfile)
+                metaservice.services += self.create_service(serv,
+                                                            name,
+                                                            opers,
+                                                            nvars,
+                                                            ctrlfile)
             self.push_service_into_list(metaservice.service, metaservice)
             return metaservice.services
         else:
