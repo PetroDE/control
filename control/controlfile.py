@@ -3,6 +3,7 @@ import copy
 import json
 import logging
 import os.path
+import subprocess
 
 from control.service import MetaService, UniService
 
@@ -49,8 +50,27 @@ class Controlfile:
         }
         variables = {
             "CONTROL_DIR": dn(dn(dn(os.path.abspath(__file__)))),
-            "CONTROL_PATH": dn(dn(os.path.abspath(__file__)))
+            "CONTROL_PATH": dn(dn(os.path.abspath(__file__))),
         }
+        p = subprocess.Popen(['git', 'rev-parse', '--show-toplevel'],
+                             stdout=subprocess.PIPE,
+                             stderr=subprocess.PIPE)
+        p.wait()
+        if p.returncode == 0:
+            root_dir, _ = p.communicate()
+            root_dir = root_dir.decode('utf-8').strip()
+            with open(os.path.join(root_dir, '.git/HEAD'), 'r') as f:
+                cur_ref = f.read().split(' ')[1].strip()
+            git_branch = os.path.basename(cur_ref)
+            with open(os.path.join(root_dir, '.git', cur_ref)) as f:
+                git_commit = f.read().strip()
+            git = {
+                'GIT_ROOT_DIR': root_dir,
+                'GIT_BRANCH': git_branch,
+                'GIT_COMMIT': git_commit,
+                'GIT_SHORT_COMMIT': git_commit[:7],
+            }
+        variables.update(git)
         variables.update(os.environ)
 
         data = self.read_in_file(controlfile_location)
@@ -161,7 +181,8 @@ def normalize_service(service, opers):
     - options: a dict of options that define transforms to a service.
       The format must conform to a Controlfile metaservice options
       definition
-    Returns: a dict of the normalized service
+    Returns: a service with all the transforms applied and all the variables
+             substituted in.
     """
     # We check that the Controlfile only specifies operations we support,
     # that way we aren't trusting a random user to accidentally get a
@@ -173,7 +194,39 @@ def normalize_service(service, opers):
         module_logger.log(11, "service '%s' %sing %s with '%s'. %s",
                           service.service, op, key, val, service)
         service[key] = operations[op](service[key], val)
+    # for key in UniService.canonical_options:
     return service['service'], service
+
+
+def _visit_every_leaf(d, var_dict):
+    """
+    Used primarily to substitute in variables in complex structures
+
+    Arguments:
+    - d does not necessarily need to be a dict
+    - var_dict should be a dictionary of variables that can be kwargs'd into
+      format
+    """
+    def _recurse(d, var_dict):
+        """
+        The recursive step, but we want the decision dict to not be built
+        every time we need to recurse
+        """
+        for k, v in d.items():
+            opts[(
+                isinstance(v, dict),
+                isinstance(v, list),
+                isinstance(v, str),
+            )](v, var_dict)
+    opts = {
+        # dict, list, str
+        (True, False, False): lambda d, var_dict: _recurse(d, var_dict),
+        (False, True, False): lambda d, var_dict: [x.format(**var_dict) for x in d],
+        (False, False, True): lambda d, var_dict: d.format(**var_dict),
+        (False, False, False): lambda d, var_dict: d
+    }
+
+    _recurse(d, var_dict)
 
 
 def satisfy_nested_options(outer, inner):

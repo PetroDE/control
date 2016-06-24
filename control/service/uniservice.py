@@ -98,6 +98,10 @@ class UniService(Service):
         'env': 'environment'
     }
 
+    canonical_options = (service_options |
+                         container_options |
+                         host_config_options |
+                         {'volumes'})
     all_options = (service_options |
                    container_options |
                    host_config_options |
