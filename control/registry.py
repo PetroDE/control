@@ -85,7 +85,7 @@ class Registry:
                 print('You are not logged into registry {}\nRun docker login'.format(self.endpoint))
                 if options.pull:
                     sys.exit(3)
-            elif [200, 404] not in r.status_code:
+            elif r.status_code not in [200, 404]:
                 print('{} {}'.format(r.status_code, r.text))
                 if options.pull:
                     sys.exit(3)
