@@ -97,7 +97,7 @@ def print_formatted(line):
         return
     if 'error' in line.keys():
         print('\x1b[31m{}\x1b[0m'.format(line['error']))
-    if 'id' in line.keys() and (line.keys() not in 'progressDetail' or not line['progressDetail']):
+    if 'id' in line.keys() and ('progressDetail' not in line.keys() or not line['progressDetail']):
         print('{}: {}'.format(line['id'], line['status']))
         return
 
