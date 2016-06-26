@@ -175,17 +175,24 @@ class UniService(Service):
 
         self._fill_in_holes()
 
-    def prepare_container_options(self):
-        """
-        Call this function to dump out a single dict ready to be passed to
-        docker.Client.create_container
-        """
-        hc = dclient.create_host_config(**self.host_config)
-        if sys.version_info >= (3, 5):
+    if sys.version_info < (3, 5):
+        def prepare_container_options(self):
+            """
+            Call this function to dump out a single dict ready to be passed to
+            docker.Client.create_container
+            """
+            hc = dclient.create_host_config(**self.host_config)
+            r = self.container.copy()
+            r.update(hc)
+            return r
+    else:
+        def prepare_container_options(self):
+            """
+            Call this function to dump out a single dict ready to be passed to
+            docker.Client.create_container
+            """
+            hc = dclient.create_host_config(**self.host_config)
             return {**self.container, **hc}
-        r = self.container.copy()
-        r.update(hc)
-        return r
 
     if sys.version_info < (3, 5):
         def keys(self):
