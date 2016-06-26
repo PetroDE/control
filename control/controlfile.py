@@ -247,7 +247,7 @@ def _substitute_vars(d, var_dict):
     # DEBUGGING
     return substitute_vars_decision_dict[(
         isinstance(d, dict),
-        isinstance(d, list),
+        isinstance(d, list) or isinstance(d, set),
         isinstance(d, str)
     )](d, var_dict)
 
