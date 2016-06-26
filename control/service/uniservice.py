@@ -98,10 +98,6 @@ class UniService(Service):
         'env': 'environment'
     }
 
-    canonical_options = (service_options |
-                         container_options |
-                         host_config_options |
-                         {'volumes'})
     all_options = (service_options |
                    container_options |
                    host_config_options |
@@ -174,6 +170,8 @@ class UniService(Service):
         for key, val in ((x, y) for x, y in container_config.items() if x in
                          self.all_options):
             self[key] = val
+        self.logger.debug('service container: %s', self.container)
+        self.logger.debug('service host_config: %s', self.host_config)
 
         self._fill_in_holes()
 
@@ -188,6 +186,17 @@ class UniService(Service):
         r = self.container.copy()
         r.update(hc)
         return r
+
+    def keys(self):
+        """
+        Return a list of all the "keys" that make up this "service".
+
+        This exists because Services act like dicts that are intelligent about
+        their values.
+        """
+        return ((self.service_options - {'container', 'host_config'}) |
+                {*self.container.keys()} |
+                {*self.container.keys()} - {'binds'})
 
     def __len__(self):
         return len(self.container) + len(self.host_config)
@@ -244,6 +253,9 @@ class UniService(Service):
 
         - hostname <= from service name
         """
+        # Set the container's name based on guesses
+        if len(self.container) > 0 and 'name' not in self.container:
+            self['name'] = self['service']
         # Set the container's hostname based on guesses
         if len(self.container) > 0 and 'hostname' not in self.container:
             self['hostname'] = self['name']
@@ -256,5 +268,6 @@ class UniService(Service):
 
 
 def _split_volumes(volumes):
+    module_logger.debug('%i items: %s', len(volumes), volumes)
     return ([x for x in volumes if ":" not in x],
             [x for x in volumes if ":" in x])

@@ -11,10 +11,22 @@ dn = os.path.dirname
 module_logger = logging.getLogger('control.controlfile')
 
 operations = {
-    'suffix': lambda x, y: '{}{}'.format(x, y),
-    'prefix': lambda x, y: '{}{}'.format(y, x),
+    'suffix': '{}{}'.format,
+    'prefix': '{}{}'.format,
     'union': lambda x, y: set(x) | set(y)
 }
+
+
+def CountCalls(f):
+    f.count = 0
+
+    def wrapper(*args, **kwargs):
+        module_logger.debug('%s called. %i', f.__name__, f.count)
+        f.count += 1
+        ret = f(*args, **kwargs)
+        module_logger.debug('returned %s', ret)
+        return ret
+    return wrapper
 
 
 class Controlfile:
@@ -52,24 +64,24 @@ class Controlfile:
             "CONTROL_DIR": dn(dn(dn(os.path.abspath(__file__)))),
             "CONTROL_PATH": dn(dn(os.path.abspath(__file__))),
         }
-        p = subprocess.Popen(['git', 'rev-parse', '--show-toplevel'],
-                             stdout=subprocess.PIPE,
-                             stderr=subprocess.PIPE)
-        p.wait()
-        if p.returncode == 0:
-            root_dir, _ = p.communicate()
-            root_dir = root_dir.decode('utf-8').strip()
-            with open(os.path.join(root_dir, '.git/HEAD'), 'r') as f:
-                cur_ref = f.read().split(' ')[1].strip()
-            git_branch = os.path.basename(cur_ref)
-            with open(os.path.join(root_dir, '.git', cur_ref)) as f:
-                git_commit = f.read().strip()
-            git = {
-                'GIT_ROOT_DIR': root_dir,
-                'GIT_BRANCH': git_branch,
-                'GIT_COMMIT': git_commit,
-                'GIT_SHORT_COMMIT': git_commit[:7],
-            }
+        with subprocess.Popen(['git', 'rev-parse', '--show-toplevel'],
+                              stdout=subprocess.PIPE,
+                              stderr=subprocess.PIPE) as p:
+            p.wait()
+            if p.returncode == 0:
+                root_dir, _ = p.communicate()
+                root_dir = root_dir.decode('utf-8').strip()
+                with open(os.path.join(root_dir, '.git/HEAD'), 'r') as f:
+                    cur_ref = f.read().split(' ')[1].strip()
+                git_branch = os.path.basename(cur_ref)
+                with open(os.path.join(root_dir, '.git', cur_ref)) as f:
+                    git_commit = f.read().strip()
+                git = {
+                    'GIT_ROOT_DIR': root_dir,
+                    'GIT_BRANCH': git_branch,
+                    'GIT_COMMIT': git_commit,
+                    'GIT_SHORT_COMMIT': git_commit[:7],
+                }
         variables.update(git)
         variables.update(os.environ)
 
@@ -77,6 +89,7 @@ class Controlfile:
         if 'services' not in data:
             serv = UniService(data, controlfile_location)
             data = {"services": {serv.service: data}}
+        self.logger.debug("variables to substitute in: %s", variables)
         self.create_service(data, 'all', {}, variables, controlfile_location)
 
     def read_in_file(self, controlfile):
@@ -92,6 +105,7 @@ class Controlfile:
             return data
         return None
 
+    @CountCalls
     def create_service(self, data, service_name, options, variables, ctrlfile):
         """
         Determine if data is a Metaservice or Uniservice
@@ -101,6 +115,7 @@ class Controlfile:
         variable somewhere in a web of included Controlfiles and have that
         apply everywhere.
         """
+        self.logger.debug('Received %i variables', len(variables))
         while 'controlfile' in data:
             ctrlfile = data['controlfile']
             data = self.read_in_file(ctrlfile)
@@ -116,7 +131,8 @@ class Controlfile:
         elif services_in_data:
             metaservice = MetaService(data)
             opers = satisfy_nested_options(outer=options, inner=data.get('options', {}))
-            nvars = copy.deepcopy(variables).update(data.get('vars', {}))
+            nvars = copy.deepcopy(variables)
+            nvars.update(data.get('vars', {}))
             for name, serv in data['services'].items():
                 metaservice.services += self.create_service(serv,
                                                             name,
@@ -127,7 +143,7 @@ class Controlfile:
             return metaservice.services
         else:
             serv = UniService(data, ctrlfile)
-            name, service = normalize_service(serv, options)
+            name, service = normalize_service(serv, options, variables)
             self.push_service_into_list(name, service)
             return [name]
 
@@ -172,7 +188,7 @@ def open_servicefile(service, location):
 
 
 # TODO: eventually the global options will go away, switch this back to options then
-def normalize_service(service, opers):
+def normalize_service(service, opers, variables):
     """
     Takes a service, and options and applies the transforms to the service.
 
@@ -191,42 +207,49 @@ def normalize_service(service, opers):
             (key, op, val)
             for key, ops in opers.items()
             for op, val in ops.items() if op in operations.keys()):
-        module_logger.log(11, "service '%s' %sing %s with '%s'. %s",
-                          service.service, op, key, val, service)
+        module_logger.log(11, "service '%s' %sing %s with '%s'.",
+                          service.service, op, key, val)
         service[key] = operations[op](service[key], val)
-    # for key in UniService.canonical_options:
+    for key in service.keys():
+        try:
+            module_logger.debug('now at %s, passing in %i vars', key, len(variables))
+            service[key] = _visit_every_leaf(service[key], variables)
+        except KeyError:
+            continue
     return service['service'], service
 
 
+# used exclusively by visit_every_leaf, but defined outside it so it's only compiled once
+visit_leaf_decision_dict = {
+    # dict, list, str
+    (True, False, False): lambda d, vd: {k: _visit_every_leaf(v, vd) for k, v in d.items()},
+    (False, True, False): lambda d, vd: [x.format(**vd) for x in d],
+    (False, False, True): lambda d, vd: d.format(**vd),
+    (False, False, False): lambda d, vd: d
+}
+
+
+@CountCalls
 def _visit_every_leaf(d, var_dict):
     """
-    Used primarily to substitute in variables in complex structures
+    Visit every leaf and substitute any variables that are found. This function
+    is named poorly, it sounds like it should generically visit every and allow
+    a function to be applied to each leaf. It does not. I have no need for that
+    right now. If I find a need this will probably be the place that that goes.
 
     Arguments:
     - d does not necessarily need to be a dict
     - var_dict should be a dictionary of variables that can be kwargs'd into
       format
     """
-    def _recurse(d, var_dict):
-        """
-        The recursive step, but we want the decision dict to not be built
-        every time we need to recurse
-        """
-        for k, v in d.items():
-            opts[(
-                isinstance(v, dict),
-                isinstance(v, list),
-                isinstance(v, str),
-            )](v, var_dict)
-    opts = {
-        # dict, list, str
-        (True, False, False): lambda d, var_dict: _recurse(d, var_dict),
-        (False, True, False): lambda d, var_dict: [x.format(**var_dict) for x in d],
-        (False, False, True): lambda d, var_dict: d.format(**var_dict),
-        (False, False, False): lambda d, var_dict: d
-    }
-
-    _recurse(d, var_dict)
+    # DEBUGGING
+    module_logger.debug('now at %s', str(d))
+    # DEBUGGING
+    return visit_leaf_decision_dict[(
+        isinstance(d, dict),
+        isinstance(d, list),
+        isinstance(d, str)
+    )](d, var_dict)
 
 
 def satisfy_nested_options(outer, inner):
