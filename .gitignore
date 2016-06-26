@@ -1,7 +1,7 @@
 control.zip
 controli.zip
 control.egg-info
-env
+env*
 
 **/.cache
 **/__pycache__

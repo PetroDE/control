@@ -175,47 +175,34 @@ class UniService(Service):
 
         self._fill_in_holes()
 
-    if sys.version_info < (3, 5):
-        def prepare_container_options(self):
-            """
-            Call this function to dump out a single dict ready to be passed to
-            docker.Client.create_container
-            """
-            hc = dclient.create_host_config(**self.host_config)
-            r = self.container.copy()
-            r.update(hc)
-            return r
-    else:
-        def prepare_container_options(self):
-            """
-            Call this function to dump out a single dict ready to be passed to
-            docker.Client.create_container
-            """
-            hc = dclient.create_host_config(**self.host_config)
-            return {**self.container, **hc}
+    def prepare_container_options(self):
+        """
+        Call this function to dump out a single dict ready to be passed to
+        docker.Client.create_container
+        """
+        # FOR WHEN YOU CAN UPGRADE TO 3.5
+        # hc = dclient.create_host_config(**self.host_config)
+        # return {**self.container, **hc}
+        module_logger.debug('uniservice using 3.4 version')
+        hc = dclient.create_host_config(**self.host_config)
+        r = self.container.copy()
+        r.update(hc)
+        return r
 
-    if sys.version_info < (3, 5):
-        def keys(self):
-            """
-            Return a list of all the "keys" that make up this "service".
+    def keys(self):
+        """
+        Return a list of all the "keys" that make up this "service".
 
-            This exists because Services act like dicts that are intelligent about
-            their values.
-            """
-            return list((self.service_options - {'container', 'host_config'}) |
-                        set(self.container.keys()) |
-                        set(self.container.keys()) - {'binds'})
-    else:
-        def keys(self):
-            """
-            Return a list of all the "keys" that make up this "service".
-
-            This exists because Services act like dicts that are intelligent about
-            their values.
-            """
-            return list((self.service_options - {'container', 'host_config'}) |
-                        {*self.container.keys()} |
-                        {*self.container.keys()} - {'binds'})
+        This exists because Services act like dicts that are intelligent about
+        their values.
+        """
+        # FOR WHEN YOU MOVE TO PYTHON 3.5
+        # return list((self.service_options - {'container', 'host_config'}) |
+        #             {*self.container.keys()} |
+        #             {*self.container.keys()} - {'binds'})
+        return list((self.service_options - {'container', 'host_config'}) |
+                    set(self.container.keys()) |
+                    set(self.container.keys()) - {'binds'})
 
     def __len__(self):
         return len(self.container) + len(self.host_config)

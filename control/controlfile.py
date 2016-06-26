@@ -18,6 +18,7 @@ operations = {
 
 
 def CountCalls(f):
+    """Debugging decorator that counts number of times called and logs return"""
     f.count = 0
 
     def wrapper(*args, **kwargs):
@@ -229,7 +230,6 @@ substitute_vars_decision_dict = {
 }
 
 
-@CountCalls
 def _substitute_vars(d, var_dict):
     """
     Visit every leaf and substitute any variables that are found. This function
