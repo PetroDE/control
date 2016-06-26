@@ -187,16 +187,28 @@ class UniService(Service):
         r.update(hc)
         return r
 
-    def keys(self):
-        """
-        Return a list of all the "keys" that make up this "service".
+    if sys.version_info < (3, 5):
+        def keys(self):
+            """
+            Return a list of all the "keys" that make up this "service".
 
-        This exists because Services act like dicts that are intelligent about
-        their values.
-        """
-        return ((self.service_options - {'container', 'host_config'}) |
-                {*self.container.keys()} |
-                {*self.container.keys()} - {'binds'})
+            This exists because Services act like dicts that are intelligent about
+            their values.
+            """
+            return list((self.service_options - {'container', 'host_config'}) |
+                        set(self.container.keys()) |
+                        set(self.container.keys()) - {'binds'})
+    else:
+        def keys(self):
+            """
+            Return a list of all the "keys" that make up this "service".
+
+            This exists because Services act like dicts that are intelligent about
+            their values.
+            """
+            return list((self.service_options - {'container', 'host_config'}) |
+                        {*self.container.keys()} |
+                        {*self.container.keys()} - {'binds'})
 
     def __len__(self):
         return len(self.container) + len(self.host_config)
