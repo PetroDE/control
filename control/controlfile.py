@@ -132,7 +132,7 @@ class Controlfile:
             metaservice = MetaService(data)
             opers = satisfy_nested_options(outer=options, inner=data.get('options', {}))
             nvars = copy.deepcopy(variables)
-            nvars.update(data.get('vars', {}))
+            nvars.update(_substitute_vars(data.get('vars', {}), variables))
             for name, serv in data['services'].items():
                 metaservice.services += self.create_service(serv,
                                                             name,
@@ -213,16 +213,16 @@ def normalize_service(service, opers, variables):
     for key in service.keys():
         try:
             module_logger.debug('now at %s, passing in %i vars', key, len(variables))
-            service[key] = _visit_every_leaf(service[key], variables)
+            service[key] = _substitute_vars(service[key], variables)
         except KeyError:
             continue
     return service['service'], service
 
 
 # used exclusively by visit_every_leaf, but defined outside it so it's only compiled once
-visit_leaf_decision_dict = {
+substitute_vars_decision_dict = {
     # dict, list, str
-    (True, False, False): lambda d, vd: {k: _visit_every_leaf(v, vd) for k, v in d.items()},
+    (True, False, False): lambda d, vd: {k: _substitute_vars(v, vd) for k, v in d.items()},
     (False, True, False): lambda d, vd: [x.format(**vd) for x in d],
     (False, False, True): lambda d, vd: d.format(**vd),
     (False, False, False): lambda d, vd: d
@@ -230,7 +230,7 @@ visit_leaf_decision_dict = {
 
 
 @CountCalls
-def _visit_every_leaf(d, var_dict):
+def _substitute_vars(d, var_dict):
     """
     Visit every leaf and substitute any variables that are found. This function
     is named poorly, it sounds like it should generically visit every and allow
@@ -245,7 +245,7 @@ def _visit_every_leaf(d, var_dict):
     # DEBUGGING
     module_logger.debug('now at %s', str(d))
     # DEBUGGING
-    return visit_leaf_decision_dict[(
+    return substitute_vars_decision_dict[(
         isinstance(d, dict),
         isinstance(d, list),
         isinstance(d, str)
