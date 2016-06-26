@@ -109,8 +109,6 @@ def build(args, ctrl):  # TODO: DRY it up
     module_logger.debug('all services discovered: %s', ctrl.services.keys())
     module_logger.debug(ctrl.services['all'])
     module_logger.debug(ctrl.services['required'])
-    # module_logger.debug(ctrl.services['cserver'].__dict__)
-    sys.exit(4)
 
     for name, service in ((name, ctrl.services[name]) for name in args.services):
         module_logger.info('building %s', name)
