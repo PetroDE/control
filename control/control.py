@@ -18,6 +18,7 @@ import argparse
 import json
 import logging
 import os
+import signal
 import sys
 import dateutil.parser as dup
 
@@ -32,6 +33,12 @@ from control.repository import Repository
 
 module_logger = logging.getLogger('control')
 module_logger.setLevel(logging.DEBUG)
+
+
+def sigint_handler(sig, frame):
+    """Gracefully handle receiving ctrl-c"""
+    print("Killing builds")
+    sys.exit(130)
 
 
 def image_is_newer(base):  # TODO: finish
@@ -244,6 +251,7 @@ def main(args):
     requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 
     console_loghandler = logging.StreamHandler()
+    signal.signal(signal.SIGINT, sigint_handler)
 
     # If you set a value that has a default, set it up above, then you must
     # reference that default here, otherwise it will be clobbered
