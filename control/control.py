@@ -18,7 +18,9 @@ import argparse
 import json
 import logging
 import os
+import shlex
 import signal
+from subprocess import Popen, PIPE
 import sys
 import dateutil.parser as dup
 
@@ -117,8 +119,10 @@ def build(args, ctrl):  # TODO: DRY it up
     module_logger.debug(ctrl.services['all'])
     module_logger.debug(ctrl.services['required'])
 
+    path = os.getcwd()
     for name, service in ((name, ctrl.services[name]) for name in args.services):
-        module_logger.info('building %s', name)
+        print('building {}'.format(name))
+        module_logger.debug(service['image'])
         if os.path.isfile(service['dockerfile']):
             with open(service['dockerfile'], 'r') as f:
                 for line in f:
@@ -130,6 +134,26 @@ def build(args, ctrl):  # TODO: DRY it up
             module_logger.warning('Dockerfile does not exist\nNot continuing with this service')
             continue
 
+        prebuild = service['events'].get('prebuild', '')
+        if len(prebuild) > 0 and isinstance(prebuild, dict):
+            os.chdir(os.path.dirname(service['dockerfile']))
+            if 'dev' in prebuild:
+                with Popen(prebuild['dev'], shell=True) as p:
+                    p.wait()
+                    if p.returncode != 0:
+                        print("prebuild action for {} failed. Will not "
+                              "continue building service.".format(name))
+                        continue
+            else:
+                module_logger.debug('%s: no dev prebuild event', name)
+            os.chdir(path)
+        elif len(prebuild) > 0:
+            os.chdir(os.path.dirname(service['dockerfile']))
+            with Popen(shlex.split(prebuild), shell=True, stdout=PIPE, stderr=PIPE):
+                pass
+            os.chdir(path)
+        module_logger.debug('End of prebuild')
+
         if pulling(upstream) and image_is_newer(upstream):
             module_logger.info('pulling upstream %s', upstream)
             for line in (json.loads(l.decode('utf-8').strip()) for l in dclient.pull(
@@ -138,17 +162,42 @@ def build(args, ctrl):  # TODO: DRY it up
                     tag=upstream.tag)):
                 print_formatted(line)
         if not args.dry_run:
-            for line in (json.loads(l.decode('utf-8').strip()) for l in dclient.build(
-                    path=os.path.dirname(service['dockerfile']),
-                    tag=service['image'],
-                    nocache=args.no_cache,
-                    rm=args.no_rm,
-                    pull=False,
-                    dockerfile=service['dockerfile'])):
+            build_args = {
+                'path': os.path.dirname(service['dockerfile']),
+                'tag': service['image'],
+                'nocache': args.no_cache,
+                'rm': args.no_rm,
+                'pull': False,
+                'dockerfile': service['dockerfile'],
+            }
+            module_logger.debug('docker build args: %s', build_args)
+            for line in (json.loads(
+                    l.decode('utf-8').strip())
+                         for l in dclient.build(**build_args)):
                 print_formatted(line)
                 if 'error' in line.keys():
                     return False
-        return True
+
+        postbuild = service['events'].get('postbuild', '')
+        if len(postbuild) > 0 and isinstance(postbuild, dict):
+            os.chdir(os.path.dirname(service['dockerfile']))
+            if 'dev' in postbuild:
+                with Popen(shlex.split(postbuild['dev']), shell=True) as p:
+                    p.wait()
+                    if p.returncode != 0:
+                        print("postbuild action for {} failed. Your"
+                              "environment may not have been cleaned up.".
+                              format(name))
+                        continue
+            else:
+                module_logger.debug('%s: no dev prebuild event', name)
+            os.chdir(path)
+        elif len(prebuild) > 0:
+            os.chdir(os.path.dirname(service['dockerfile']))
+            with Popen(postbuild, shell=True, stdout=PIPE, stderr=PIPE):
+                pass
+            os.chdir(path)
+    return True
 
 
 def build_prod(args, ctrl):
@@ -179,30 +228,27 @@ def build_prod(args, ctrl):
 
 
 def start(args, ctrl):
-    # TODO: normalize all the options
-    # TODO: parse {collective} out of options in the controlfile
-    if options.name:
-        options.container['name'] = options.name
-    if options.no_volumes:
-        options.container['volumes'] = []
-    container = Container(options.image, options.container)
+    for name, service in ((name, ctrl.services[name]) for name in args.services):
+        if options.no_volumes:
+            service['volumes'] = []
+        container = Container(service)
 
-    # check if image is newer, start again if image is newer
-    try:
-        # TODO: if a container exists but the options don't match, log out that
-        # we are starting a container that does not match the merged controlfile
-        # and cli options
-        container = CreatedContainer(options.container['name'], options.container)
-    except Container.DoesNotExist:
-        pass  # This will probably be the majority case
-    print('Starting {}'.format(options.container['name']))
-    try:
-        container = container.create()
-        container.start()
-    except Container.ContainerException as e:
-        module_logger.debug('outer start containerexception caught')
-        module_logger.critical(e)
-        exit(1)
+        # check if image is newer, start again if image is newer
+        try:
+            # TODO: if a container exists but the options don't match, log out that
+            # we are starting a container that does not match the merged controlfile
+            # and cli options
+            container = CreatedContainer(service)
+        except Container.DoesNotExist:
+            pass  # This will probably be the majority case
+        print('Starting {}'.format(service['name']))
+        try:
+            container = container.create()
+            container.start()
+        except Container.ContainerException as e:
+            module_logger.debug('outer start containerexception caught')
+            module_logger.critical(e)
+            exit(1)
     return True
 
 
@@ -350,6 +396,12 @@ def main(args):
         module_logger.debug(vars(ctrl.services[options.services[0]]))
     elif options.image and len(options.services) > 1:
         module_logger.info('Ignoring image specified in arguments. Too many services.')
+    # Override container name if only one service
+    if options.name and len(options.services) == 1:
+        ctrl.services[options.services[0]]['name'] = options.name
+        module_logger.debug(vars(ctrl.services[options.services[0]]))
+    elif options.name and len(options.services) > 1:
+        module_logger.info('Ignoring container name specified in arguments. Too many services to start')
     # Override dockerfile location if only one service discovered
     if options.dockerfile and len(options.services) == 1:
         ctrl.services[options.services[0]]['dockerfile'] = options.image
