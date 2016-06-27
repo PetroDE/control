@@ -16,3 +16,4 @@ opts['no_rm'] = True
 opts['no_verify'] = False
 opts['pull'] = None
 opts['version'] = version
+opts['services'] = []

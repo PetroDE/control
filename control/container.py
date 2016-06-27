@@ -28,11 +28,10 @@ class Container:
         self.logger = logging.getLogger('control.container.Container')
 
     def create(self):
-        log(self.conf, level='debug')
         try:
             self.service.prepare_container_options()
             return CreatedContainer(
-                dclient.create_container(**self.service.container),
+                dclient.create_container(self.service.image, **self.service.container),
                 self.service)
         except docker.errors.NotFound as e:
             if 'chown' in e.explanation.decode('utf-8'):
@@ -58,7 +57,7 @@ class Container:
 
 class CreatedContainer(Container):
     def __init__(self, name, service):
-        Container.__init__(service)
+        Container.__init__(self, service)
         try:
             self.inspect = dclient.inspect_container(name)
         except docker.errors.NotFound as e:

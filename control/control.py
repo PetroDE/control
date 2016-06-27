@@ -26,6 +26,7 @@ import dateutil.parser as dup
 
 import docker
 
+from control.exceptions import ContainerDoesNotExist, ContainerException
 from control.options import options
 from control.dclient import dclient
 from control.container import Container, CreatedContainer
@@ -238,14 +239,14 @@ def start(args, ctrl):
             # TODO: if a container exists but the options don't match, log out that
             # we are starting a container that does not match the merged controlfile
             # and cli options
-            container = CreatedContainer(service)
-        except Container.DoesNotExist:
+            container = CreatedContainer(service['name'], service)
+        except ContainerDoesNotExist:
             pass  # This will probably be the majority case
         print('Starting {}'.format(service['name']))
         try:
             container = container.create()
             container.start()
-        except Container.ContainerException as e:
+        except ContainerException as e:
             module_logger.debug('outer start containerexception caught')
             module_logger.critical(e)
             exit(1)
@@ -280,11 +281,11 @@ def restart(args, ctrl):
 
 
 def default(args, ctrl):
-    ret = build(args)
+    ret = build(args, ctrl)
     if not ret:
         return ret
     if hasattr(args, 'container') and options.container['name']:
-        return restart(args)
+        return restart(args, ctrl)
     return ret
     module_logger.debug(vars(args))
 
