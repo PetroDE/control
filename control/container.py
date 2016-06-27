@@ -1,5 +1,6 @@
 """Handle the concept of a container."""
 
+import logging
 import os
 import shutil
 
@@ -22,72 +23,46 @@ class Container:
     a default has not been explicitly overriden.
     """
 
-    expected_timeout = 10
-    conf = {
-        'name': '',
-        'image': '',
-        'hostname': None,
-    }
-
-    def __init__(self, image, conf):
-        try:
-            self.expected_timeout = conf.pop('expected_timeout')
-        except KeyError:
-            pass
-        try:
-            if 'hostname' not in conf:
-                conf['hostname'] = conf['name']
-        except KeyError:
-            pass
-        self.conf.update(conf)
-        self.conf['image'] = image
-
-    def get_container_options(self):
-        conf_copy = self.conf.copy()
-        host_config = {}
-        try:
-            host_config['binds'] = conf_copy.pop('volumes')
-        except KeyError:
-            pass
-        # This calling create_host_config probably doesn't change the dict
-        conf_copy['host_config'] = dclient.create_host_config(**host_config)
-        return conf_copy
+    def __init__(self, service):
+        self.service = service
+        self.logger = logging.getLogger('control.container.Container')
 
     def create(self):
         log(self.conf, level='debug')
         try:
+            self.service.prepare_container_options()
             return CreatedContainer(
-                dclient.create_container(**self.get_container_options()),
-                self.conf)
+                dclient.create_container(**self.service.container),
+                self.service)
         except docker.errors.NotFound as e:
             if 'chown' in e.explanation.decode('utf-8'):
                 raise VolumePseudoExists(e.explanation.decode('utf-8'))
             elif 'volume not found' in e.explanation.decode('utf-8'):
                 raise TransientVolumeCreation(e.explanation.decode('utf-8'))
-            log(e, level='debug')
-            log(e.response, level='debug')
-            log(e.explanation.decode('utf-8'), level='debug')
+            self.logger.debug('Unexpected Docker 404')
+            self.logger.debug(e)
+            self.logger.debug(e.response)
+            self.logger.debug(e.explanation.decode('utf-8'))
             raise
         except docker.errors.APIError as e:
             if 'volume name invalid' in e.explanation.decode('utf-8'):
                 raise InvalidVolumeName(e.explanation.decode('utf-8'))
             elif 'is already in use by container' in e.explanation.decode('utf-8'):
                 raise ContainerAlreadyExists(e.explanation.decode('utf-8'))
-            log(e, level='debug')
-            log(e.response, level='debug')
-            log(e.explanation.decode('utf-8'), level='debug')
+            self.logger.debug('Unexpected Docker API Error')
+            self.logger.debug(e)
+            self.logger.debug(e.response)
+            self.logger.debug(e.explanation.decode('utf-8'))
             raise
 
 
 class CreatedContainer(Container):
-    inspect = {}
-
-    def __init__(self, name, conf={}):
+    def __init__(self, name, service):
+        Container.__init__(service)
         try:
             self.inspect = dclient.inspect_container(name)
-            super().__init__(self.inspect['Image'], conf)
         except docker.errors.NotFound as e:
-            log(e, level='debug')
+            self.logger.debug(e)
             raise ContainerDoesNotExist(name)
 
     def start(self):
@@ -114,7 +89,7 @@ class CreatedContainer(Container):
     def remove(self):
         dclient.remove_container(self.inspect['Id'], v=True)
         try:
-            dclient.inspect_container(self.inspect['Id'])
+            self.inspect = dclient.inspect_container(self.inspect['Id'])
             return False
         except docker.errors.NotFound:
             return True
