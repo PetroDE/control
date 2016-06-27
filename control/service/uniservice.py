@@ -5,7 +5,6 @@ service.
 
 import logging
 import os.path
-import sys
 from copy import deepcopy
 
 from docker.utils import create_host_config
@@ -74,7 +73,8 @@ class UniService(Service):
         'image',
         'required',
         'service',
-        'services'
+        'services',
+        'events'
     }
     host_config_options = (
         set(create_host_config.__code__.co_varnames) -
@@ -88,6 +88,7 @@ class UniService(Service):
             'self',
             'dns',
             'host_config',
+            'image',
             'mem_limit',
             'memswap_limit',
             'volumes_from'
@@ -112,7 +113,7 @@ class UniService(Service):
         "command": [],
         "ports": [],
         "environment": [],
-        "entrypoint": []
+        "entrypoint": [],
     }
 
     def __init__(self, service, controlfile):
@@ -120,6 +121,7 @@ class UniService(Service):
         self.dockerfile = ""
         self.container = {}
         self.host_config = {}
+        self.events = {}
         self.expected_timeout = 10
 
         serv = deepcopy(service)
@@ -170,6 +172,7 @@ class UniService(Service):
         for key, val in ((x, y) for x, y in container_config.items() if x in
                          self.all_options):
             self[key] = val
+        self.logger.debug('service image: %s', self.image)
         self.logger.debug('service container: %s', self.container)
         self.logger.debug('service host_config: %s', self.host_config)
 
