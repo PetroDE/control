@@ -146,8 +146,8 @@ class UniService(Service):
         # object here, we just read in the string
         try:
             self.image = serv.pop('image')
-        except KeyError as e:
-            self.logger.critical('missing image %s', e)
+        except KeyError:
+            self.logger.critical('%s missing image', controlfile)
             raise InvalidControlfile(controlfile, 'missing image')
 
         # We're going to hold onto this until we're ready to iterate over it
