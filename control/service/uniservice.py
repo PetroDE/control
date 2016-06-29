@@ -68,17 +68,26 @@ class UniService(Service):
         'container',
         'controlfile',
         'dockerfile',
+        'events',
         'expected_timeout',
+        'fromline',
         'host_config',
         'image',
         'required',
         'service',
         'services',
-        'events'
     }
+
     host_config_options = (
         set(create_host_config.__code__.co_varnames) -
-        {'k', 'l', 'v', 'cpu_group', 'tmpfs'})
+        {
+            'cpu_group',
+            'k',
+            'l',
+            'tmpfs'
+            'v',
+        }
+    )
 
     # Options that have moved to the host_config should be put in there
     # despite them still being accepted by docker-py
@@ -92,18 +101,21 @@ class UniService(Service):
             'mem_limit',
             'memswap_limit',
             'volumes_from'
-        })
+        }
+    )
 
     abbreviations = {
         'cmd': 'command',
         'env': 'environment'
     }
 
-    all_options = (service_options |
-                   container_options |
-                   host_config_options |
-                   abbreviations.keys() |
-                   {'volumes'})
+    all_options = (
+        service_options |
+        container_options |
+        host_config_options |
+        abbreviations.keys() |
+        {'volumes'}
+    )
 
     defaults = {
         "dns": [],

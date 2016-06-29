@@ -73,10 +73,9 @@ def pulling(repo):
 
     if options.pull is False:  # We actually do need to check the difference of None and False
         return False
-    elif (
-            options.func.__name__ in ['default', 'build'] and
-            not repo.registry and
-            not options.pull):
+    elif (options.func.__name__ in ['default', 'build'] and
+          not repo.registry and
+          not options.pull):
         return False
     return True
 
