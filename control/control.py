@@ -81,23 +81,6 @@ def pulling(repo):
     return True
 
 
-def container_is_running(container):
-    try:
-        return dclient.inspect_container(container)['State']['Running']
-    except docker.errors.NotFound:
-        return False
-    return False
-
-
-def container_exists(container):
-    try:
-        dclient.inspect_container(container)
-        return True
-    except docker.errors.NotFound:
-        return False
-    return False
-
-
 def print_formatted(line):
     """Strip off all the useless stuff that Docker doesn't bother to parse out."""
     module_logger.debug('bytes: %s', line)
