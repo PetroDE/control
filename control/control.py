@@ -129,6 +129,8 @@ def build(args, ctrl):  # TODO: DRY it up
         module_logger.debug(service['image'])
         module_logger.debug(service['controlfile'])
         module_logger.debug(service['dockerfile']['dev'])
+
+        # Crack open the Dockerfile to read the FROM line to check about pulling
         if os.path.isfile(service['dockerfile']['dev']):
             with open(service['dockerfile']['dev'], 'r') as f:
                 for line in f:
@@ -174,29 +176,44 @@ def build(args, ctrl):  # TODO: DRY it up
 
 
 def build_prod(args, ctrl):
+    """Build an image that has everything in it for production"""
     if args.pull is None:
         args.pull = True
     if args.debug or args.dry_run:
-        print('running docker build')
-    if not hasattr(args, 'image') or not args.image:
-        module_logger.critical(
-            'No image name was specified. Edit your Controlfile or specify with -i')
-        sys.exit(3)
-    if not args.dry_run:
-        for line in (json.loads(l.decode('utf-8').strip()) for l in dclient.build(
-                path='.',
-                tag=args.image,
-                nocache=args.no_cache,
-                rm=args.no_rm,
-                pull=args.pull,
-                dockerfile=args.dockerfile)):
-            print_formatted(line)
-            if 'error' in line.keys():
-                return False
+        print('running production build')
+
+    for name, service in ((name, ctrl.services[name]) for name in args.services):
+        print('building {}'.format(name))
+
+        if not run_event('prebuild', 'prod', service):
+            return False
+        module_logger.debug('End of prebuild')
+
+        if not args.dry_run:
+            build_args = {
+                'path': os.path.dirname(service['dockerfile']['prod']),
+                'tag': service['image'],
+                'nocache': args.no_cache,
+                'rm': args.no_rm,
+                'pull': args.pull,
+                'dockerfile': service['dockerfile']['prod'],
+            }
+            module_logger.debug('docker build args: %s', build_args)
+            for line in (json.loads(l.decode('utf-8').strip())
+                         for l in dclient.build(**build_args)):
+                print_formatted(line)
+                if 'error' in line.keys():
+                    return False
+
+        if not run_event('postbuild', 'prod', service):
+            print('{}: Your environment may not have been cleaned up'.format(name))
+            return False
+        module_logger.debug('End of postbuild')
     print('writing IMAGES.txt')
     if not args.dry_run:
         with open('IMAGES.txt', 'w') as f:
-            f.write('{}\n'.format(args.image))
+            f.write('\n'.join(args.services))
+            f.write('\n')
     return True
 
 
@@ -283,7 +300,6 @@ def main(args):
     shared_parser.add_argument('--dry-run', action='store_true', help='Pretend to execute actions, but only log that they happened')
     shared_parser.add_argument('--controlfile', default=options.controlfile, help='override the controlfile that lets control know about the services it needs to manage')
     shared_parser.add_argument('--dockerfile', help='override the dockerfile used to build the image')
-    shared_parser.add_argument('--no-cache', action='store_true', help='do not use the cache')
     shared_parser.add_argument('--pull', action='store_const', const=True, dest='pull', help='pull the image from upstream')
     shared_parser.add_argument('--no-pull', action='store_const', const=False, dest='pull', help='do not pull newer versions of the base image')
     shared_parser.add_argument('--no-volumes', action='store_true', help='override the volumes mentioned in the Controlfile')
@@ -301,6 +317,7 @@ def main(args):
         '--version',
         action='version',
         version='%(prog)s v{}'.format(options.version))
+    parser.add_argument('--no-cache', action='store_true', help='do not use the cache')
     parser.set_defaults(func=default)
     subparsers = parser.add_subparsers()
 
@@ -309,6 +326,7 @@ def main(args):
         'build',
         description='Build an image',
         parents=[shared_parser, service_parser])
+    build_parser.add_argument('--no-cache', action='store_true', help='do not use the cache')
     build_parser.set_defaults(func=build)
 
     buildprod_parser = subparsers.add_parser(
@@ -318,6 +336,7 @@ def main(args):
             Writes a file IMAGES.txt which is a newline delimited file of the
             images that should be pushed to the registry.''',
         parents=[shared_parser, service_parser])
+    buildprod_parser.add_argument('--cache', action='store_false', dest='no_cache', help='allow the use of the docker cache')
     buildprod_parser.set_defaults(func=build_prod)
 
     start_parser = subparsers.add_parser(
