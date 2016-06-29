@@ -4,7 +4,7 @@ service.
 """
 
 import logging
-import os.path
+from os.path import abspath, dirname, isfile, join
 from copy import deepcopy
 
 from docker.utils import create_host_config
@@ -118,7 +118,8 @@ class UniService(Service):
 
     def __init__(self, service, controlfile):
         self.logger = logging.getLogger('control.service.Service')
-        self.dockerfile = ""
+        self.dockerfile = {'dev': '', 'prod': ''}
+        self.fromline = None
         self.container = {}
         self.host_config = {}
         self.events = {}
@@ -150,6 +151,19 @@ class UniService(Service):
         # Set whether the service is required
         # Record the controlfile that this service came from
         self.controlfile = serv.pop('controlfile', controlfile)
+        if 'dockerfile' in serv:
+            dkrfile = serv.pop('dockerfile')
+            if isinstance(dkrfile, dict):
+                self.dockerfile = {
+                    'dev': abspath(dkrfile['dev']),
+                    'prod': abspath(dkrfile['prod'])
+                }
+            else:
+                self.dockerfile = {
+                    'dev': abspath(dkrfile),
+                    'prod': abspath(dkrfile)
+                }
+            self.logger.debug('setting dockerfile %s', self.dockerfile)
 
         # The rest of the options can be straight assigned
         for key, val in (
@@ -269,11 +283,24 @@ class UniService(Service):
         if len(self.container) > 0 and 'hostname' not in self.container:
             self['hostname'] = self['name']
         # Guess that there's a Dockerfile next to the Controlfile
-        directory = os.path.dirname(os.path.abspath(self.controlfile))
-        dockerfile = directory + '/Dockerfile'
-        if os.path.isfile(dockerfile):
-            self.dockerfile = dockerfile
+        dkrfile = join(abspath(dirname(self.controlfile)), 'Dockerfile')
+        devfile = dkrfile + '.dev'
+        prdfile = dkrfile + '.prod'
+        try:
+            self.dockerfile['dev'], self.dockerfile['prod'] = {
+                # devProdAreEmpty, DockerfileExists, DevProdExists
+                (True, True, False): lambda f, d, p: (f, f),
+                (True, False, True): lambda f, d, p: (d, p),
+                # This list is sparsely populated because these are the only
+                # conditions that mean the values need to be guessed
+            }[(
+                not self.dockerfile['dev'] and not self.dockerfile['prod'],
+                isfile(dkrfile),
+                isfile(devfile) and isfile(prdfile)
+            )](dkrfile, devfile, prdfile)
             self.logger.debug('setting dockerfile: %s', self.dockerfile)
+        except KeyError as e:
+            self.logger.debug('leaving dockerfile as it was found in Controlfile: %s', e)
 
 
 def _split_volumes(volumes):
