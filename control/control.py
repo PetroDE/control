@@ -18,9 +18,8 @@ import argparse
 import json
 import logging
 import os
-import shlex
 import signal
-from subprocess import Popen, PIPE
+from subprocess import Popen
 import sys
 import dateutil.parser as dup
 
@@ -112,7 +111,30 @@ def print_formatted(line):
         return
 
 
+def run_event(event, env, service):
+    """run pre/postbuild, etc. events"""
+    try:
+        if isinstance(service.events[event], dict):
+            cmd = service.events[event][env]
+        else:
+            cmd = service.events[event]
+    except KeyError:
+        return True  # There is no event for this event, or for this env
+
+    path = os.getcwd()
+    os.chdir(os.path.dirname(service['dockerfile']['dev']))
+    with Popen(cmd, shell=True) as p:
+        p.wait()
+        if p.returncode != 0:
+            print("{} action for {} failed. Will not "
+                  "continue building service.".format(event, service['name']))
+            return False
+    os.chdir(path)
+    return True
+
+
 def build(args, ctrl):  # TODO: DRY it up
+    """build a development image"""
     module_logger.debug('running docker build')
     print('building services: {}'.format(", ".join(sorted(args.services))))
 
@@ -120,12 +142,13 @@ def build(args, ctrl):  # TODO: DRY it up
     module_logger.debug(ctrl.services['all'])
     module_logger.debug(ctrl.services['required'])
 
-    path = os.getcwd()
     for name, service in ((name, ctrl.services[name]) for name in args.services):
         print('building {}'.format(name))
         module_logger.debug(service['image'])
-        if os.path.isfile(service['dockerfile']):
-            with open(service['dockerfile'], 'r') as f:
+        module_logger.debug(service['controlfile'])
+        module_logger.debug(service['dockerfile']['dev'])
+        if os.path.isfile(service['dockerfile']['dev']):
+            with open(service['dockerfile']['dev'], 'r') as f:
                 for line in f:
                     if line.startswith('FROM'):
                         upstream = Repository.match(line.split()[1])
@@ -135,24 +158,8 @@ def build(args, ctrl):  # TODO: DRY it up
             module_logger.warning('Dockerfile does not exist\nNot continuing with this service')
             continue
 
-        prebuild = service['events'].get('prebuild', '')
-        if len(prebuild) > 0 and isinstance(prebuild, dict):
-            os.chdir(os.path.dirname(service['dockerfile']))
-            if 'dev' in prebuild:
-                with Popen(prebuild['dev'], shell=True) as p:
-                    p.wait()
-                    if p.returncode != 0:
-                        print("prebuild action for {} failed. Will not "
-                              "continue building service.".format(name))
-                        continue
-            else:
-                module_logger.debug('%s: no dev prebuild event', name)
-            os.chdir(path)
-        elif len(prebuild) > 0:
-            os.chdir(os.path.dirname(service['dockerfile']))
-            with Popen(shlex.split(prebuild), shell=True, stdout=PIPE, stderr=PIPE):
-                pass
-            os.chdir(path)
+        if not run_event('prebuild', 'dev', service):
+            continue
         module_logger.debug('End of prebuild')
 
         if pulling(upstream) and image_is_newer(upstream):
@@ -164,12 +171,12 @@ def build(args, ctrl):  # TODO: DRY it up
                 print_formatted(line)
         if not args.dry_run:
             build_args = {
-                'path': os.path.dirname(service['dockerfile']),
+                'path': os.path.dirname(service['dockerfile']['dev']),
                 'tag': service['image'],
                 'nocache': args.no_cache,
                 'rm': args.no_rm,
                 'pull': False,
-                'dockerfile': service['dockerfile'],
+                'dockerfile': service['dockerfile']['dev'],
             }
             module_logger.debug('docker build args: %s', build_args)
             for line in (json.loads(
@@ -179,25 +186,8 @@ def build(args, ctrl):  # TODO: DRY it up
                 if 'error' in line.keys():
                     return False
 
-        postbuild = service['events'].get('postbuild', '')
-        if len(postbuild) > 0 and isinstance(postbuild, dict):
-            os.chdir(os.path.dirname(service['dockerfile']))
-            if 'dev' in postbuild:
-                with Popen(shlex.split(postbuild['dev']), shell=True) as p:
-                    p.wait()
-                    if p.returncode != 0:
-                        print("postbuild action for {} failed. Your"
-                              "environment may not have been cleaned up.".
-                              format(name))
-                        continue
-            else:
-                module_logger.debug('%s: no dev prebuild event', name)
-            os.chdir(path)
-        elif len(prebuild) > 0:
-            os.chdir(os.path.dirname(service['dockerfile']))
-            with Popen(postbuild, shell=True, stdout=PIPE, stderr=PIPE):
-                pass
-            os.chdir(path)
+        if not run_event('postbuild', 'dev', service):
+            print('{}: Your environment may not have been cleaned up'.format(name))
     return True
 
 
