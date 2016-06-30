@@ -21,6 +21,7 @@ import os
 import signal
 from subprocess import Popen
 import sys
+import tempfile
 import dateutil.parser as dup
 
 import docker
@@ -87,7 +88,7 @@ def print_formatted(line):
         print(list(line.values())[0].strip())
         return
     if 'error' in line.keys():
-        print('\x1b[31m{}\x1b[0m'.format(line['error']))
+        print('\x1b[31m{}\x1b[0m'.format(line['error'].strip()))
     if 'id' in line.keys() and ('progressDetail' not in line.keys() or not line['progressDetail']):
         print('{}: {}'.format(line['id'], line['status']))
         return
@@ -130,45 +131,54 @@ def build(args, ctrl):  # TODO: DRY it up
         module_logger.debug(service['controlfile'])
         module_logger.debug(service['dockerfile']['dev'])
 
-        # Crack open the Dockerfile to read the FROM line to check about pulling
-        if os.path.isfile(service['dockerfile']['dev']):
-            with open(service['dockerfile']['dev'], 'r') as f:
-                for line in f:
-                    if line.startswith('FROM'):
-                        upstream = Repository.match(line.split()[1])
-                        module_logger.debug('discovered upstream as %s', upstream)
-                        break
-        else:
-            module_logger.warning('Dockerfile does not exist\nNot continuing with this service')
-            continue
-
         if not run_event('prebuild', 'dev', service):
             continue
         module_logger.debug('End of prebuild')
 
-        if pulling(upstream) and image_is_newer(upstream):
-            module_logger.info('pulling upstream %s', upstream)
-            for line in (json.loads(l.decode('utf-8').strip()) for l in dclient.pull(
-                    stream=True,
-                    repository=upstream.get_pull_image_name(),
-                    tag=upstream.tag)):
-                print_formatted(line)
-        if not args.dry_run:
-            build_args = {
-                'path': os.path.dirname(service['dockerfile']['dev']),
-                'tag': service['image'],
-                'nocache': args.no_cache,
-                'rm': args.no_rm,
-                'pull': False,
-                'dockerfile': service['dockerfile']['dev'],
-            }
-            module_logger.debug('docker build args: %s', build_args)
-            for line in (json.loads(
-                    l.decode('utf-8').strip())
-                         for l in dclient.build(**build_args)):
-                print_formatted(line)
-                if 'error' in line.keys():
-                    return False
+        # Crack open the Dockerfile to read the FROM line to check about pulling
+        with tempfile.NamedTemporaryFile() as tmpfile:
+            upstream = None
+            with open(service['dockerfile']['dev'], 'r') as f:
+                for line in f:
+                    if line.startswith('FROM') and service.fromline['dev']:
+                        upstream = Repository.match(service.fromline['dev'].split()[1])
+                        module_logger.debug('discovered upstream as %s', upstream)
+                        tmpfile.write(bytes(service.fromline['dev'], 'utf-8'))
+                    elif line.startswith('FROM'):
+                        upstream = Repository.match(line.split()[1])
+                        module_logger.debug('discovered upstream as %s', upstream)
+                        tmpfile.write(bytes(line, 'utf-8'))
+                    else:
+                        tmpfile.write(bytes(line, 'utf-8'))
+                if not upstream:
+                    module_logger.warning('Dockerfile does not exist\n'
+                                          'Not continuing with this service')
+                    continue
+            tmpfile.flush()
+
+            if pulling(upstream) and image_is_newer(upstream):
+                module_logger.info('pulling upstream %s', upstream)
+                for line in (json.loads(l.decode('utf-8').strip()) for l in dclient.pull(
+                        stream=True,
+                        repository=upstream.get_pull_image_name(),
+                        tag=upstream.tag)):
+                    print_formatted(line)
+            if not args.dry_run:
+                build_args = {
+                    'path': os.path.dirname(service['dockerfile']['dev']),
+                    'tag': service['image'],
+                    'nocache': args.no_cache,
+                    'rm': args.no_rm,
+                    'pull': False,
+                    'dockerfile': tmpfile.name,
+                }
+                module_logger.debug('docker build args: %s', build_args)
+                for line in (json.loads(
+                        l.decode('utf-8').strip())
+                             for l in dclient.build(**build_args)):
+                    print_formatted(line)
+                    if 'error' in line.keys():
+                        return False
 
         if not run_event('postbuild', 'dev', service):
             print('{}: Your environment may not have been cleaned up'.format(name))
@@ -189,21 +199,51 @@ def build_prod(args, ctrl):
             return False
         module_logger.debug('End of prebuild')
 
-        if not args.dry_run:
-            build_args = {
-                'path': os.path.dirname(service['dockerfile']['prod']),
-                'tag': service['image'],
-                'nocache': args.no_cache,
-                'rm': args.no_rm,
-                'pull': args.pull,
-                'dockerfile': service['dockerfile']['prod'],
-            }
-            module_logger.debug('docker build args: %s', build_args)
-            for line in (json.loads(l.decode('utf-8').strip())
-                         for l in dclient.build(**build_args)):
-                print_formatted(line)
-                if 'error' in line.keys():
-                    return False
+        # Crack open the Dockerfile to read the FROM line to check about pulling
+        with tempfile.NamedTemporaryFile() as tmpfile:
+            upstream = None
+            with open(service['dockerfile']['prod'], 'r') as f:
+                module_logger.debug('changing from line: %s', service.fromline['prod'])
+                for line in f:
+                    if line.startswith('FROM') and service.fromline['prod']:
+                        upstream = Repository.match(service.fromline['prod'].split()[1])
+                        module_logger.debug('discovered upstream as %s', upstream)
+                        tmpfile.write(bytes(service.fromline['prod'], 'utf-8'))
+                    elif line.startswith('FROM'):
+                        upstream = Repository.match(line.split()[1])
+                        module_logger.debug('discovered upstream as %s', upstream)
+                        tmpfile.write(bytes(line, 'utf-8'))
+                    else:
+                        tmpfile.write(bytes(line, 'utf-8'))
+                if not upstream:
+                    module_logger.warning('Dockerfile does not exist\n'
+                                          'Not continuing with this service')
+                    continue
+            tmpfile.flush()
+
+            if not args.dry_run:
+                if not pulling(upstream):
+                    for line in (
+                            json.loads(l.decode('utf-8').strip())
+                            for l in dclient.pull(
+                                    stream=True,
+                                    repository=upstream.get_pull_image_name(),
+                                    tag=upstream.tag)):
+                        print_formatted(line)
+                build_args = {
+                    'path': os.path.dirname(service['dockerfile']['prod']),
+                    'tag': service['image'],
+                    'nocache': args.no_cache,
+                    'rm': args.no_rm,
+                    'pull': False,
+                    'dockerfile': tmpfile.name,
+                }
+                module_logger.debug('docker build args: %s', build_args)
+                for line in (json.loads(l.decode('utf-8').strip())
+                             for l in dclient.build(**build_args)):
+                    print_formatted(line)
+                    if 'error' in line.keys():
+                        return False
 
         if not run_event('postbuild', 'prod', service):
             print('{}: Your environment may not have been cleaned up'.format(name))

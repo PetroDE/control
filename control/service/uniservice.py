@@ -131,7 +131,7 @@ class UniService(Service):
     def __init__(self, service, controlfile):
         self.logger = logging.getLogger('control.service.Service')
         self.dockerfile = {'dev': '', 'prod': ''}
-        self.fromline = None
+        self.fromline = {'dev': '', 'prod': ''}
         self.container = {}
         self.host_config = {}
         self.events = {}
@@ -160,22 +160,61 @@ class UniService(Service):
             self.service = container_config['name']
         elif service_empty:
             self.service = Repository.match(self.image).image
-        # Set whether the service is required
+
         # Record the controlfile that this service came from
         self.controlfile = serv.pop('controlfile', controlfile)
-        if 'dockerfile' in serv:
+
+        try:
             dkrfile = serv.pop('dockerfile')
             if isinstance(dkrfile, dict):
                 self.dockerfile = {
-                    'dev': abspath(dkrfile['dev']),
-                    'prod': abspath(dkrfile['prod'])
+                    'dev': abspath(join(dirname(self.controlfile),
+                                        dkrfile['dev'])),
+                    'prod': abspath(join(dirname(self.controlfile),
+                                         dkrfile['prod'])),
                 }
             else:
                 self.dockerfile = {
-                    'dev': abspath(dkrfile),
-                    'prod': abspath(dkrfile)
+                    'dev': abspath(join(dirname(self.controlfile), dkrfile)),
+                    'prod': abspath(join(dirname(self.controlfile), dkrfile)),
                 }
             self.logger.debug('setting dockerfile %s', self.dockerfile)
+        except KeyError as e:
+            # Guess that there's a Dockerfile next to the Controlfile
+            dkrfile = join(abspath(dirname(self.controlfile)), 'Dockerfile')
+            devfile = dkrfile + '.dev'
+            prdfile = dkrfile + '.prod'
+            try:
+                self.dockerfile['dev'], self.dockerfile['prod'] = {
+                    # devProdAreEmpty, DockerfileExists, DevProdExists
+                    (True, True, False): lambda f, d, p: (f, f),
+                    (True, False, True): lambda f, d, p: (d, p),
+                    # This list is sparsely populated because these are the
+                    # only conditions that mean the values need to be guessed
+                }[(
+                    not self.dockerfile['dev'] and not self.dockerfile['prod'],
+                    isfile(dkrfile),
+                    isfile(devfile) and isfile(prdfile)
+                )](dkrfile, devfile, prdfile)
+                self.logger.debug('setting dockerfile: %s', self.dockerfile)
+            except KeyError as e:
+                self.logger.warning(
+                    '%s: problem setting dockerfile: %s missing',
+                    self.service,
+                    e)
+
+        if 'fromline' in serv:
+            fline = serv.pop('fromline')
+            if isinstance(fline, dict):
+                self.fromline = {
+                    'dev': fline.get('dev', ''),
+                    'prod': fline.get('prod', '')
+                }
+            else:
+                self.fromline = {
+                    'dev': fline,
+                    'prod': fline
+                }
 
         # The rest of the options can be straight assigned
         for key, val in (
@@ -294,25 +333,6 @@ class UniService(Service):
         # Set the container's hostname based on guesses
         if len(self.container) > 0 and 'hostname' not in self.container:
             self['hostname'] = self['name']
-        # Guess that there's a Dockerfile next to the Controlfile
-        dkrfile = join(abspath(dirname(self.controlfile)), 'Dockerfile')
-        devfile = dkrfile + '.dev'
-        prdfile = dkrfile + '.prod'
-        try:
-            self.dockerfile['dev'], self.dockerfile['prod'] = {
-                # devProdAreEmpty, DockerfileExists, DevProdExists
-                (True, True, False): lambda f, d, p: (f, f),
-                (True, False, True): lambda f, d, p: (d, p),
-                # This list is sparsely populated because these are the only
-                # conditions that mean the values need to be guessed
-            }[(
-                not self.dockerfile['dev'] and not self.dockerfile['prod'],
-                isfile(dkrfile),
-                isfile(devfile) and isfile(prdfile)
-            )](dkrfile, devfile, prdfile)
-            self.logger.debug('setting dockerfile: %s', self.dockerfile)
-        except KeyError as e:
-            self.logger.debug('leaving dockerfile as it was found in Controlfile: %s', e)
 
 
 def _split_volumes(volumes):
