@@ -65,6 +65,7 @@ class Controlfile:
             "CONTROL_DIR": dn(dn(dn(os.path.abspath(__file__)))),
             "CONTROL_PATH": dn(dn(os.path.abspath(__file__))),
         }
+        git = {}
         with subprocess.Popen(['git', 'rev-parse', '--show-toplevel'],
                               stdout=subprocess.PIPE,
                               stderr=subprocess.PIPE) as p:
@@ -72,17 +73,22 @@ class Controlfile:
             if p.returncode == 0:
                 root_dir, _ = p.communicate()
                 root_dir = root_dir.decode('utf-8').strip()
-                with open(os.path.join(root_dir, '.git/HEAD'), 'r') as f:
-                    cur_ref = f.read().split(' ')[1].strip()
-                git_branch = os.path.basename(cur_ref)
-                with open(os.path.join(root_dir, '.git', cur_ref)) as f:
+                git['GIT_ROOT_DIR'] = root_dir
+                commit_file = '.git/HEAD'
+                with subprocess.Popen(['git', 'symbolic-ref', '-q', 'HEAD'],
+                                      stdout=subprocess.PIPE,
+                                      stderr=subprocess.PIPE) as q:
+                    q.wait()
+                    if q.returncode == 0:
+                        ref_path, _ = q.communicate()
+                        ref_path = ref_path.decode('utf-8').strip()
+                        git['GIT_BRANCH'] = os.path.basename(ref_path)
+                        commit_file = os.path.join('.git', ref_path)
+
+                with open(os.path.join(root_dir, commit_file), 'r') as f:
                     git_commit = f.read().strip()
-                git = {
-                    'GIT_ROOT_DIR': root_dir,
-                    'GIT_BRANCH': git_branch,
-                    'GIT_COMMIT': git_commit,
-                    'GIT_SHORT_COMMIT': git_commit[:7],
-                }
+                    git['GIT_COMMIT'] = git_commit
+                    git['GIT_SHORT_COMMIT'] = git_commit[:7]
         variables.update(git)
         variables.update(os.environ)
 
