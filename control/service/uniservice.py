@@ -189,6 +189,7 @@ class UniService(Service):
                     # devProdAreEmpty, DockerfileExists, DevProdExists
                     (True, True, False): lambda f, d, p: (f, f),
                     (True, False, True): lambda f, d, p: (d, p),
+                    (True, False, False): lambda f, d, p: ('', ''),
                     # This list is sparsely populated because these are the
                     # only conditions that mean the values need to be guessed
                 }[(
