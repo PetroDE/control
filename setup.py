@@ -30,8 +30,9 @@ setup(
     packages=find_packages(exclude=['tests']),
     install_requirements=[
         'docker-py >= 1.8.1',
-        'requests',
         'python-dateutil',
+        'requests',
+        'urllib3',
     ],
     entry_points={
         'console_scripts': ['control=control:run_control']
