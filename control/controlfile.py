@@ -140,6 +140,7 @@ class Controlfile:
             opers = satisfy_nested_options(outer=options, inner=data.get('options', {}))
             nvars = copy.deepcopy(variables)
             nvars.update(_substitute_vars(data.get('vars', {}), variables))
+            nvars.update(os.environ)
             for name, serv in data['services'].items():
                 metaservice.services += self.create_service(serv,
                                                             name,
