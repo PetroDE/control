@@ -252,7 +252,7 @@ def build_prod(args, ctrl):
     print('writing IMAGES.txt')
     if not args.dry_run:
         with open('IMAGES.txt', 'w') as f:
-            f.write('\n'.join([x['image'] for x in args.services]))
+            f.write('\n'.join([x['image'] for _, x in args.services]))
             f.write('\n')
     return True
 
