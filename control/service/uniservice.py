@@ -7,7 +7,7 @@ import logging
 from os.path import abspath, dirname, isfile, join
 from copy import deepcopy
 
-from docker.utils import create_host_config
+from docker.utils import create_host_config, parse_env_file
 from docker.api import ContainerApiMixin
 
 from control.dclient import dclient
@@ -71,6 +71,7 @@ class UniService(Service):
         'events',
         'expected_timeout',
         'fromline',
+        'env_file',
         'host_config',
         'image',
         'required',
@@ -136,6 +137,7 @@ class UniService(Service):
         self.host_config = {}
         self.events = {}
         self.expected_timeout = 10
+        self.env_file = ''
 
         serv = deepcopy(service)
         Service.__init__(self, serv)
@@ -173,6 +175,8 @@ class UniService(Service):
                     'prod': abspath(join(dirname(self.controlfile),
                                          dkrfile['prod'])),
                 }
+            elif dkrfile == "":
+                self.dockerfile = {'dev': "", 'prod': ""}
             else:
                 self.dockerfile = {
                     'dev': abspath(join(dirname(self.controlfile), dkrfile)),
@@ -222,7 +226,7 @@ class UniService(Service):
                 (key, val)
                 for key, val in serv.items()
                 if key in self.service_options):
-            self.__dict__[key] = val
+            self.__dict__[key] = serv.pop(val)
 
         # Now we are ready to iterate over the container configuration.
         # We do this awkward check to make sure that we don't accidentally
@@ -256,6 +260,9 @@ class UniService(Service):
         hc = dclient.create_host_config(**self.host_config)
         r = self.container.copy()
         r.update(hc)
+        if self.env_file:
+            envs = parse_env_file(self.env_file)
+            r['environment'] = r.get('environment', []) + envs
         return r
 
     def keys(self):
