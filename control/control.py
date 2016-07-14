@@ -258,7 +258,8 @@ def build_prod(args, ctrl):
 
 
 def start(args, ctrl):
-    for name, service in ((name, ctrl.services[name]) for name in args.services):
+    """starting containers"""
+    for service in (ctrl.services[name] for name in args.services):
         if options.no_volumes:
             service['volumes'] = []
         container = Container(service)
@@ -278,48 +279,46 @@ def start(args, ctrl):
         except ContainerException as e:
             module_logger.debug('outer start containerexception caught')
             module_logger.critical(e)
-            exit(1)
     return True
 
 
 def stop(args, ctrl):
-    try:
-        container = CreatedContainer(options.container['name'])
-        if options.force:
-            print('Killing {}'.format(options.container['name']))
-            container.kill()
-        else:
-            print('Stopping {}'.format(options.container['name']))
-            container.stop()
-        print('Removing {}'.format(options.container['name']))
-        container.remove()
-        if options.wipe:
-            container.remove_volumes()
-    except Container.DoesNotExist:
-        print('{} does not exist.'.format(options.container['name']))
-    except Exception as e:
-        module_logger.critical('unexpected error: %s', e)
-        return False
+    """stopping containers"""
+    for service in (ctrl.services[name] for name in args.services):
+        try:
+            container = CreatedContainer(service['name'], service)
+            if options.force:
+                print('Killing {}'.format(service['name']))
+                container.kill()
+            else:
+                print('Stopping {}'.format(service['name']))
+                container.stop()
+            print('Removing {}'.format(service['name']))
+            container.remove()
+            if options.wipe:
+                container.remove_volumes()
+        except ContainerDoesNotExist:
+            print('{} does not exist.'.format(service['name']))
     return True
 
 
 def restart(args, ctrl):
-    if not stop(args):
+    """stop containers, and start them again"""
+    if not stop(args, ctrl):
         return False
-    return start(args)
+    return start(args, ctrl)
 
 
 def default(args, ctrl):
+    """build containers and restart them"""
     ret = build(args, ctrl)
     if not ret:
         return ret
-    if hasattr(args, 'container') and options.container['name']:
-        return restart(args, ctrl)
-    return ret
-    module_logger.debug(vars(args))
+    return restart(args, ctrl)
 
 
 def main(args):
+    """create the parser and decide how to run"""
     # Shut up requests because the user has to make a conscious choice to be
     # insecure
     import requests

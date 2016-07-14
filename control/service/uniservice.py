@@ -226,7 +226,7 @@ class UniService(Service):
                 (key, val)
                 for key, val in serv.items()
                 if key in self.service_options):
-            self.__dict__[key] = serv.pop(val)
+            self.__dict__[key] = val
 
         # Now we are ready to iterate over the container configuration.
         # We do this awkward check to make sure that we don't accidentally
@@ -262,7 +262,9 @@ class UniService(Service):
         r.update(hc)
         if self.env_file:
             envs = parse_env_file(self.env_file)
-            r['environment'] = r.get('environment', []) + envs
+            r['environment'] = (
+                r.get('environment', []) +
+                ["{}={}".format(k, v) for k, v in envs.items()])
         return r
 
     def keys(self):

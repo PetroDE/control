@@ -58,6 +58,8 @@ class Container:
 class CreatedContainer(Container):
     def __init__(self, name, service):
         Container.__init__(self, service)
+        if not service['name']:
+            raise ContainerDoesNotExist(service.service)
         try:
             self.inspect = dclient.inspect_container(name)
         except docker.errors.NotFound as e:
@@ -76,7 +78,7 @@ class CreatedContainer(Container):
         return self.inspect['State']['Running']
 
     def stop(self):
-        dclient.stop(self.inspect['Id'], timeout=self.expected_timeout)
+        dclient.stop(self.inspect['Id'], timeout=self.service.expected_timeout)
         self.inspect = dclient.inspect_container(self.inspect['Id'])
         return not self.inspect['State']['Running']
 

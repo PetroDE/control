@@ -213,7 +213,7 @@ def normalize_service(service, opers, variables):
     # random string eval'd.
     for key, op, val in (
             (key, op, val)
-            for key, ops in opers.items()
+            for key, ops in opers.items() if service[key]
             for op, val in ops.items() if op in operations.keys()):
         module_logger.log(11, "service '%s' %sing %s with '%s'.",
                           service.service, op, key, val)
