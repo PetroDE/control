@@ -31,7 +31,9 @@ class Container:
         try:
             self.service.prepare_container_options()
             return CreatedContainer(
-                dclient.create_container(self.service.image, **self.service.container),
+                dclient.create_container(
+                    self.service.image,
+                    **self.service.prepare_container_options()),
                 self.service)
         except docker.errors.NotFound as e:
             if 'chown' in e.explanation.decode('utf-8'):

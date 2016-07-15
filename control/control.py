@@ -33,6 +33,7 @@ from control.container import Container, CreatedContainer
 from control.controlfile import Controlfile
 from control.registry import Registry
 from control.repository import Repository
+from control.service import UniService
 
 module_logger = logging.getLogger('control')
 module_logger.setLevel(logging.DEBUG)
@@ -259,7 +260,9 @@ def build_prod(args, ctrl):
 
 def start(args, ctrl):
     """starting containers"""
-    for service in (ctrl.services[name] for name in args.services):
+    for service in (ctrl.services[name]
+                    for name in args.services
+                    if isinstance(ctrl.services[name], UniService)):
         if options.no_volumes:
             service['volumes'] = []
         container = Container(service)

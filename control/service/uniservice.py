@@ -77,6 +77,7 @@ class UniService(Service):
         'required',
         'service',
         'services',
+        'volumes',
     }
 
     host_config_options = (
@@ -101,7 +102,8 @@ class UniService(Service):
             'image',
             'mem_limit',
             'memswap_limit',
-            'volumes_from'
+            'volumes_from',
+            'volumes'
         }
     )
 
@@ -114,8 +116,7 @@ class UniService(Service):
         service_options |
         container_options |
         host_config_options |
-        abbreviations.keys() |
-        {'volumes'}
+        abbreviations.keys()
     )
 
     defaults = {
@@ -130,7 +131,7 @@ class UniService(Service):
     }
 
     def __init__(self, service, controlfile):
-        self.logger = logging.getLogger('control.service.Service')
+        self.logger = logging.getLogger('control.service.UniService')
         self.dockerfile = {'dev': '', 'prod': ''}
         self.fromline = {'dev': '', 'prod': ''}
         self.container = {}
@@ -138,6 +139,7 @@ class UniService(Service):
         self.events = {}
         self.expected_timeout = 10
         self.env_file = ''
+        self.volumes = []
 
         serv = deepcopy(service)
         Service.__init__(self, serv)
@@ -256,15 +258,19 @@ class UniService(Service):
         # FOR WHEN YOU CAN UPGRADE TO 3.5
         # hc = dclient.create_host_config(**self.host_config)
         # return {**self.container, **hc}
-        module_logger.debug('uniservice using 3.4 version')
+        self.logger.debug('uniservice using 3.4 version')
+        self.container['volumes'], self.host_config['binds'] = _split_volumes(self.volumes)
+        self.logger.debug('container: %s', self.container)
+        self.logger.debug('host_config: %s', self.host_config)
         hc = dclient.create_host_config(**self.host_config)
         r = self.container.copy()
-        r.update(hc)
+        r['host_config'] = hc
         if self.env_file:
             envs = parse_env_file(self.env_file)
             r['environment'] = (
                 r.get('environment', []) +
                 ["{}={}".format(k, v) for k, v in envs.items()])
+        self.logger.debug('combined: %s', r)
         return r
 
     def keys(self):
@@ -277,10 +283,10 @@ class UniService(Service):
         # FOR WHEN YOU MOVE TO PYTHON 3.5
         # return list((self.service_options - {'container', 'host_config'}) |
         #             {*self.container.keys()} |
-        #             {*self.container.keys()} - {'binds'})
+        #             {*self.host_config.keys()} - {'binds'})
         return list((self.service_options - {'container', 'host_config'}) |
                     set(self.container.keys()) |
-                    set(self.container.keys()) - {'binds'})
+                    set(self.host_config.keys()) - {'binds'})
 
     def __len__(self):
         return len(self.container) + len(self.host_config)
@@ -292,10 +298,7 @@ class UniService(Service):
             pass  # We don't really care if you aren't using an abbrev
             # we just don't want to branch to do this replacement
 
-        if key == 'volumes':
-            return (self.container.get('volumes', []) +
-                    self.host_config.get('binds', []))
-        elif key in self.container_options:
+        if key in self.container_options:
             return self.container.get(key, self.defaults.get(key, ''))
         elif key in self.host_config_options:
             return self.host_config.get(key, self.defaults.get(key, ''))
@@ -308,9 +311,6 @@ class UniService(Service):
 
         if key in self.service_options:
             self.__dict__[key] = value
-        elif key == 'volumes':
-            (self.__dict__['container']['volumes'],
-             self.__dict__['host_config']['binds']) = _split_volumes(value)
         elif key in self.container_options:
             self.container[key] = value
         elif key in self.host_config_options:
@@ -346,6 +346,18 @@ class UniService(Service):
 
 
 def _split_volumes(volumes):
+    """
+    Volumes can be specified in three ways:
+    "container_mount_point"
+    "host_binding:container_mount_point"
+    "host_binding:container_mount_point:ro"
+
+    create_container(volumes: []) wants the full list of container_mount_points
+    create_host_config(binds: []) wants ONLY the host bindings
+
+    This is annoying because container_mount_point will be index 0 or 1
+    depending on the number of colons in the string.
+    """
     module_logger.debug('%i items: %s', len(volumes), volumes)
-    return ([x for x in volumes if ":" not in x],
+    return ([x.split(':')[:2][-1] for x in volumes],
             [x for x in volumes if ":" in x])

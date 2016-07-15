@@ -5,7 +5,7 @@ import logging
 import os.path
 import subprocess
 
-from control.service import MetaService, UniService
+from control.service import MetaService, UniService, BuildService
 
 dn = os.path.dirname
 module_logger = logging.getLogger('control.controlfile')
@@ -128,14 +128,17 @@ class Controlfile:
             data = self.read_in_file(ctrlfile)
         data['service'] = service_name
 
+        container_not_in_data = 'container' not in data
         services_in_data = 'services' in data
         services_is_list = isinstance(data.get('services', None), list)
         if services_in_data and services_is_list:
+            self.logger.debug('found pure Metaservice %s', data['service'])
             metaservice = MetaService(data)
             metaservice.services = data['services']
             self.push_service_into_list(metaservice.service, metaservice)
             return []
         elif services_in_data:
+            self.logger.debug('found Metaservice %s', data['service'])
             metaservice = MetaService(data)
             opers = satisfy_nested_options(outer=options, inner=data.get('options', {}))
             nvars = copy.deepcopy(variables)
@@ -149,8 +152,17 @@ class Controlfile:
                                                             ctrlfile)
             self.push_service_into_list(metaservice.service, metaservice)
             return metaservice.services
+        elif container_not_in_data:
+            self.logger.debug('found buildservice %s', data['service'])
+            serv = BuildService(data, ctrlfile)
+            variables['SERVICE'] = serv.service
+            name, service = normalize_service(serv, options, variables)
+            self.push_service_into_list(name, service)
+            return [name]
         else:
+            self.logger.debug('found uni %s', data['service'])
             serv = UniService(data, ctrlfile)
+            variables['SERVICE'] = serv.service
             name, service = normalize_service(serv, options, variables)
             self.push_service_into_list(name, service)
             return [name]
@@ -213,7 +225,7 @@ def normalize_service(service, opers, variables):
     # random string eval'd.
     for key, op, val in (
             (key, op, val)
-            for key, ops in opers.items() if service[key]
+            for key, ops in opers.items()
             for op, val in ops.items() if op in operations.keys()):
         module_logger.log(11, "service '%s' %sing %s with '%s'.",
                           service.service, op, key, val)
