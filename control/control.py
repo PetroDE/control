@@ -126,7 +126,7 @@ def build(args, ctrl):  # TODO: DRY it up
     module_logger.debug(ctrl.services['all'])
     module_logger.debug(ctrl.services['required'])
 
-    for name, service in ((name, ctrl.services[name]) for name in args.services):
+    for name, service in sorted(((name, ctrl.services[name]) for name in args.services)):
         print('building {}'.format(name))
         module_logger.debug(service['image'])
         module_logger.debug(service['controlfile'])
