@@ -33,7 +33,7 @@ from control.container import Container, CreatedContainer
 from control.controlfile import Controlfile
 from control.registry import Registry
 from control.repository import Repository
-from control.service import UniService
+from control.service import UniService, MetaService
 
 module_logger = logging.getLogger('control')
 module_logger.setLevel(logging.DEBUG)
@@ -193,7 +193,7 @@ def build_prod(args, ctrl):
     if args.debug or args.dry_run:
         print('running production build')
 
-    for name, service in ((name, ctrl.services[name]) for name in args.services):
+    for name, service in sorted(((name, ctrl.services[name]) for name in args.services)):
         print('building {}'.format(name))
 
         if not run_event('prebuild', 'prod', service):
@@ -260,9 +260,9 @@ def build_prod(args, ctrl):
 
 def start(args, ctrl):
     """starting containers"""
-    for service in (ctrl.services[name]
-                    for name in args.services
-                    if isinstance(ctrl.services[name], UniService)):
+    for service in sorted((ctrl.services[name]
+                           for name in args.services
+                           if isinstance(ctrl.services[name], UniService))):
         if options.no_volumes:
             service['volumes'] = []
         container = Container(service)
@@ -287,7 +287,10 @@ def start(args, ctrl):
 
 def stop(args, ctrl):
     """stopping containers"""
-    for service in (ctrl.services[name] for name in args.services):
+    module_logger.debug(", ".join(sorted(args.services)))
+    for service in sorted((ctrl.services[name]
+                           for name in args.services
+                           if isinstance(ctrl.services[name], UniService))):
         try:
             container = CreatedContainer(service['name'], service)
             if options.force:
@@ -312,12 +315,48 @@ def restart(args, ctrl):
     return start(args, ctrl)
 
 
+def opencontainer(args, ctrl):
+    """handles opening a container for dev work"""
+    if len(args.services) > 1:
+        print('Cannot open more than 1 service in 1 call')
+        return False
+    name = args.services[0]
+    try:
+        if isinstance(ctrl.services[name]['open'], list):
+            (
+                ctrl.services[name]['entrypoint'],
+                ctrl.services[name]['command']) = (
+                    ctrl.services[name]['open'][0],
+                    ctrl.services[name]['open'][1:])
+        elif isinstance(ctrl.services[name]['open'], str):
+            # split on the first space
+            ctrl.services[name]['entrypoint'], \
+                ctrl.services[name]['command'] = \
+                ctrl.services[name]['open'].partition(' ')[::2]
+    except KeyError:
+        print("'open' not defined for service. Using /bin/sh as entrypoint")
+        ctrl.services[name]['entrypoint'] = '/bin/sh'
+        ctrl.services[name]['command'] = ''
+    ctrl.services[name]['stdin_open'] = True
+    ctrl.services[name]['tty'] = True
+    try:
+        container = CreatedContainer(ctrl.services[name]['name'], ctrl.services[name])
+    except ContainerDoesNotExist:
+        pass  # We need the container to not exist
+    else:
+        print('stopping {}'.format(ctrl.services[name]['name']))
+        if not (container.stop() and container.remove()):
+            print('could not stop {}'.format(ctrl.services[name]['name']))
+            return False
+    container = Container(ctrl.services[name]).create()
+    os.execlp('docker', 'docker', 'start', '-a', '-i', ctrl.services[name]['name'])
+
+
 def default(args, ctrl):
     """build containers and restart them"""
-    ret = build(args, ctrl)
-    if not ret:
-        return ret
-    return restart(args, ctrl)
+    if not build(args, ctrl):
+        return restart(args, ctrl)
+    return False
 
 
 def main(args):
@@ -334,22 +373,49 @@ def main(args):
     # If you set a value that has a default, set it up above, then you must
     # reference that default here, otherwise it will be clobbered
     shared_parser = argparse.ArgumentParser(add_help=False)
-    shared_parser.add_argument('-d', '--debug', action='store_true', help='print debug information helpful to developing the control script. This probably won\'t be useful to using the script, consider -v')
-    shared_parser.add_argument('-f', '--force', action='store_true', help='be forceful in all things')
-    shared_parser.add_argument('-i', '--image', default=options.image, help='override the tagged name of the image being built')
-    shared_parser.add_argument('-n', '--name', help='the name to give to the container')
-    shared_parser.add_argument('-w', '--wipe', action='store_true', help='Make sure that volumes are empty after stopping. May require sudo. THIS IS EXTREMELY DANGEROUS')
-    shared_parser.add_argument('--dry-run', action='store_true', help='Pretend to execute actions, but only log that they happened')
-    shared_parser.add_argument('--controlfile', default=options.controlfile, help='override the controlfile that lets control know about the services it needs to manage')
-    shared_parser.add_argument('--dockerfile', help='override the dockerfile used to build the image')
-    shared_parser.add_argument('--pull', action='store_const', const=True, dest='pull', help='pull the image from upstream')
-    shared_parser.add_argument('--no-pull', action='store_const', const=False, dest='pull', help='do not pull newer versions of the base image')
-    shared_parser.add_argument('--no-volumes', action='store_true', help='override the volumes mentioned in the Controlfile')
-    shared_parser.add_argument('--no-rm', action='store_false', help='do not remove any images, even on success')
-    shared_parser.add_argument('--no-verify', action='store_true', help='do not check the validity of the registry\'s SSL cert')
+    shared_parser.add_argument(
+        '-d', '--debug', action='store_true', help='print debug information '
+        'helpful to developing the control script. This probably won\'t be '
+        'useful to using the script, consider -v')
+    shared_parser.add_argument(
+        '-f', '--force', action='store_true', help='be forceful in all things')
+    shared_parser.add_argument(
+        '-i', '--image', default=options.image, help='override the tagged '
+        'name of the image being built')
+    shared_parser.add_argument(
+        '-n', '--name', help='the name to give to the container')
+    shared_parser.add_argument(
+        '-w', '--wipe', action='store_true', help='Make sure that volumes are '
+        'empty after stopping. May require sudo. THIS IS EXTREMELY DANGEROUS')
+    shared_parser.add_argument(
+        '--dry-run', action='store_true', help='Pretend to execute actions, '
+        'but only log that they happened')
+    shared_parser.add_argument(
+        '--controlfile', default=options.controlfile, help='override the '
+        'controlfile that lets control know about the services it needs to '
+        'manage')
+    shared_parser.add_argument(
+        '--dockerfile', help='override the dockerfile used to build the image')
+    shared_parser.add_argument(
+        '--pull', action='store_const', const=True, dest='pull', help='pull '
+        'the image from upstream')
+    shared_parser.add_argument(
+        '--no-pull', action='store_const', const=False, dest='pull', help='do '
+        'not pull newer versions of the base image')
+    shared_parser.add_argument(
+        '--no-volumes', action='store_true', help='override the volumes '
+        'mentioned in the Controlfile')
+    shared_parser.add_argument(
+        '--no-rm', action='store_false', help='do not remove any images, even '
+        'on success')
+    shared_parser.add_argument(
+        '--no-verify', action='store_true', help='do not check the validity '
+        'of the registry\'s SSL cert')
 
     service_parser = argparse.ArgumentParser(add_help=False)
-    service_parser.add_argument('services', type=str, nargs='*', help='specify a list of services to operate on. Defaults to all required services')
+    service_parser.add_argument(
+        'services', type=str, nargs='*', help='specify a list of services to '
+        'operate on. Defaults to all required services')
 
     parser = argparse.ArgumentParser(
         description='Control the building and running of images and containers',
@@ -378,14 +444,16 @@ def main(args):
             Writes a file IMAGES.txt which is a newline delimited file of the
             images that should be pushed to the registry.''',
         parents=[shared_parser, service_parser])
-    buildprod_parser.add_argument('--cache', action='store_false', dest='no_cache', help='allow the use of the docker cache')
+    buildprod_parser.add_argument(
+        '--cache', action='store_false', dest='no_cache',
+        help='allow the use of the docker cache')
     buildprod_parser.set_defaults(func=build_prod)
 
     start_parser = subparsers.add_parser(
         'start',
         description='start a container using an image',
-        parents=[shared_parser])
-    start_parser.set_defaults(func=start)
+        parents=[shared_parser, service_parser])
+    start_parser.set_defaults(func=restart)
 
     stop_parser = subparsers.add_parser(
         'stop',
@@ -399,6 +467,12 @@ def main(args):
         description='remove a container, and start it up again',
         parents=[shared_parser, service_parser])
     restart_parser.set_defaults(func=restart)
+
+    open_parser = subparsers.add_parser(
+        'open',
+        description='Open a shell in the container instead of the usual entrypoint',
+        parents=[shared_parser, service_parser])
+    open_parser.set_defaults(func=opencontainer)
     parser.parse_args(args, namespace=options)
 
     if not dclient:
@@ -422,7 +496,14 @@ def main(args):
 
     # If no services were specified on the command line, default to required
     if len(options.services) == 0:
+        module_logger.debug('No options specified. Using required service list')
         options.services = ctrl.required_services()
+    # Flatten the service list by replacing metaservices with their service lists
+    for name in (name
+                 for name in options.services
+                 if isinstance(ctrl.services[name], MetaService)):
+        options.services += ctrl.services[name].services
+        options.services.remove(name)
 
     # Override image name if only one service discovered
     if options.image and len(options.services) == 1:
@@ -435,7 +516,8 @@ def main(args):
         ctrl.services[options.services[0]]['name'] = options.name
         module_logger.debug(vars(ctrl.services[options.services[0]]))
     elif options.name and len(options.services) > 1:
-        module_logger.info('Ignoring container name specified in arguments. Too many services to start')
+        module_logger.info('Ignoring container name specified in arguments. '
+                           'Too many services to start')
     # Override dockerfile location if only one service discovered
     if options.dockerfile and len(options.services) == 1:
         ctrl.services[options.services[0]]['dockerfile'] = options.image

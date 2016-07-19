@@ -183,7 +183,7 @@ class Controlfile:
     def required_services(self):
         """Return the list of required services"""
         return [s for s in self.services['required'].services
-                if isinstance(self.services[s], UniService)]
+                if not isinstance(self.services[s], MetaService)]
 
     def get_list_of_services(self):
         """

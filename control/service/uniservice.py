@@ -68,12 +68,13 @@ class UniService(Service):
         'container',
         'controlfile',
         'dockerfile',
+        'env_file',
         'events',
         'expected_timeout',
         'fromline',
-        'env_file',
         'host_config',
         'image',
+        'open',
         'required',
         'service',
         'services',
@@ -287,6 +288,12 @@ class UniService(Service):
         return list((self.service_options - {'container', 'host_config'}) |
                     set(self.container.keys()) |
                     set(self.host_config.keys()) - {'binds'})
+
+    def __lt__(self, other):
+        return (self.service, self.container['name']) < (other.service, other.container['name'])
+
+    def __eq__(self, other):
+        return (self.service, self.container['name']) == (other.service, other.container['name'])
 
     def __len__(self):
         return len(self.container) + len(self.host_config)
