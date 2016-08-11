@@ -354,7 +354,7 @@ def opencontainer(args, ctrl):
 
 def default(args, ctrl):
     """build containers and restart them"""
-    if not build(args, ctrl):
+    if build(args, ctrl):
         return restart(args, ctrl)
     return False
 
@@ -467,6 +467,12 @@ def main(args):
         description='remove a container, and start it up again',
         parents=[shared_parser, service_parser])
     restart_parser.set_defaults(func=restart)
+
+    rere_parser = subparsers.add_parser(
+        'rere',
+        description='rere a container using an image',
+        parents=[shared_parser, service_parser])
+    rere_parser.set_defaults(func=default)
 
     open_parser = subparsers.add_parser(
         'open',
