@@ -19,7 +19,7 @@ test:
 	py.test -v --cov-config .coveragerc --cov-report term-missing:skip-covered --cov=control --junitxml results.xml control/tests
 
 jenkins-test:
-	py.test -v --cov-config .coveragerc --cov-report xml --cov=control --junitxml results.xml control/tests
+	-py.test -v --cov-config .coveragerc --cov-report xml --cov=control --junitxml results.xml control/tests
 
 clean:
 	-rm $(EXE)
