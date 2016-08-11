@@ -4,8 +4,11 @@ correctly
 """
 
 import unittest
+import os
+from os.path import join
 
-from control import service
+from control.exceptions import InvalidControlfile
+from control.service import UniService
 
 
 class TestService(unittest.TestCase):
@@ -16,9 +19,10 @@ class TestService(unittest.TestCase):
         Test to make sure that controlfiles that only define the name
         of the image tha control should build is handled corrcetly.
         """
+        # TODO: Move this into the controlfile test file
         serv = {"image": "test:latest"}
         cntrlfile = "./Controlfile"
-        result = service.Service(serv, cntrlfile)
+        result = UniService(serv, cntrlfile)
         self.assertEqual(
             result.image,
             "test:latest")
@@ -29,7 +33,7 @@ class TestService(unittest.TestCase):
         self.assertEqual(result.host_config, {})
 
         serv['service'] = "server"
-        result = service.Service(serv, cntrlfile)
+        result = UniService(serv, cntrlfile)
         self.assertEqual(
             result.image,
             "test:latest")
@@ -50,13 +54,9 @@ class TestService(unittest.TestCase):
             }
         }
         cntrlfile = "./Controlfile"
-        result = service.Service(serv, cntrlfile)
-        self.assertEqual(
-            result.image,
-            "busybox")
-        self.assertEqual(
-            result.service,
-            "test")
+        result = UniService(serv, cntrlfile)
+        self.assertEqual(result.image, "busybox")
+        self.assertEqual(result.service, "test")
         self.assertEqual(
             result.container,
             {
@@ -66,7 +66,7 @@ class TestService(unittest.TestCase):
         self.assertEqual(result.host_config, {})
 
         serv['service'] = "server"
-        result = service.Service(serv, cntrlfile)
+        result = UniService(serv, cntrlfile)
         self.assertEqual(
             result.image,
             "busybox")
@@ -87,91 +87,95 @@ class TestService(unittest.TestCase):
         way into the right spot
         """
         serv = {
-            "service": "server",
-            "image": "busybox",
-            "expected_timeout": 3,
-            "required": False,
             "dockerfile": "Dockerfile.example",
+            "expected_timeout": 3,
+            "image": "busybox",
+            "required": False,
+            "service": "server",
             "container": {
                 "cmd": "/usr/cat",
-                "hostname": "testme",
-                "user": "foo",
-                "detach": True,
-                "stdin_open": True,
-                "tty": True,
-                "mem_limit": "100m",
-                "ports": [8080, (8888, 'udp'), 8443],
-                "port_bindings": {8080: ('0.0.0.0', 8080), '8888/udp': 8888},
-                "env": ["FOO=bar", "DOMAIN=example.com"],
-                "dns": ["8.8.8.8"],
-                "volumes": ["/etc", "named:/var/lib", "/mnt/docker:/var/tmp"],
-                "volumes_from": ["datacontainer"],
-                "network_disabled": True,
-                "name": "test",
-                "entrypoint": "/bin/bash",
-                "cpu_shares": 1,
-                "working_dir": "/etc",
-                "dns_search": ["example", "example.com"],
-                "memswap_limit": 100,
-                "labels": {"label": "me"},
-                "links": ["networklink"],
-                "privileged": True,
-                "network_mode": 'bridge',
-                "read_only": True,
-                "ipc_mode": "shared",
-                "shm_size": '100M',
                 "cpu_group": 10,
                 "cpu_period": 10,
-                "group_add": ["cdrom"],
+                "cpu_shares": 1,
+                "detach": True,
                 "devices": "/dev/mdadm",
+                "dns": ["8.8.8.8"],
+                "dns_search": ["example", "example.com"],
+                "entrypoint": "/bin/bash",
+                "env": ["FOO=bar", "DOMAIN=example.com"],
+                "group_add": ["cdrom"],
+                "hostname": "testme",
+                "ipc_mode": "shared",
+                "labels": {"label": "me"},
+                "links": ["networklink"],
+                "mem_limit": "100m",
+                "memswap_limit": 100,
+                "name": "test",
+                "network_disabled": True,
+                "network_mode": 'bridge',
+                "port_bindings": {8080: ('0.0.0.0', 8080), '8888/udp': 8888},
+                "ports": [8080, (8888, 'udp'), 8443],
+                "privileged": True,
+                "read_only": True,
+                "shm_size": '100M',
+                "stdin_open": True,
+                "tty": True,
+                "user": "foo",
+                "volumes": ["/etc", "named:/var/lib", "/mnt/docker:/var/tmp"],
+                "volumes_from": ["datacontainer"],
+                "working_dir": "/etc",
             }
         }
         cntrlfile = "./Controlfile"
-        result = service.Service(serv, cntrlfile)
+        result = UniService(serv, cntrlfile)
         self.assertEqual(result.service, "server")
         self.assertEqual(result.image, "busybox")
         self.assertEqual(result.expected_timeout, 3)
         self.assertEqual(result.required, False)
-        self.assertEqual(result.dockerfile, "Dockerfile.example")
+        self.assertEqual(
+            result.dockerfile,
+            {
+                "prod": join(os.getcwd(), 'Dockerfile.example'),
+                "dev": join(os.getcwd(), 'Dockerfile.example'),
+            })
         # import pytest; pytest.set_trace()
+        self.assertEqual(result.volumes, serv['container']['volumes'])
         self.assertEqual(
             result.container,
             {
                 "command": "/usr/cat",
-                "hostname": "testme",
-                "user": "foo",
+                "cpu_shares": 1,
                 "detach": True,
+                "entrypoint": "/bin/bash",
+                "environment": ["FOO=bar", "DOMAIN=example.com"],
+                "hostname": "testme",
+                "labels": {"label": "me"},
+                "name": "test",
+                "network_disabled": True,
+                "ports": [8080, (8888, 'udp'), 8443],
                 "stdin_open": True,
                 "tty": True,
-                "ports": [8080, (8888, 'udp'), 8443],
-                "environment": ["FOO=bar", "DOMAIN=example.com"],
-                "volumes": ["/etc"],
-                "network_disabled": True,
-                "name": "test",
-                "entrypoint": "/bin/bash",
-                "cpu_shares": 1,
-                "labels": {"label": "me"},
+                "user": "foo",
                 "working_dir": "/etc"
             })
         self.assertEqual(
             result.host_config,
             {
-                "mem_limit": "100m",
-                "port_bindings": {8080: ('0.0.0.0', 8080), '8888/udp': 8888},
-                "dns": ["8.8.8.8"],
-                "binds": ["named:/var/lib", "/mnt/docker:/var/tmp"],
-                "volumes_from": ["datacontainer"],
-                "dns_search": ["example", "example.com"],
-                "memswap_limit": 100,
-                "links": ["networklink"],
-                "privileged": True,
-                "network_mode": 'bridge',
-                "read_only": True,
-                "ipc_mode": "shared",
-                "shm_size": '100M',
                 "cpu_period": 10,
-                "group_add": ["cdrom"],
                 "devices": "/dev/mdadm",
+                "dns": ["8.8.8.8"],
+                "dns_search": ["example", "example.com"],
+                "group_add": ["cdrom"],
+                "ipc_mode": "shared",
+                "links": ["networklink"],
+                "mem_limit": "100m",
+                "memswap_limit": 100,
+                "network_mode": 'bridge',
+                "port_bindings": {8080: ('0.0.0.0', 8080), '8888/udp': 8888},
+                "privileged": True,
+                "read_only": True,
+                "shm_size": '100M',
+                "volumes_from": ["datacontainer"],
             })
         self.assertNotIn(
             'cpu_group',
@@ -187,7 +191,7 @@ class TestService(unittest.TestCase):
             }
         }
         cntrlfile = "./Controlfile"
-        result = service.Service(serv, cntrlfile)
+        result = UniService(serv, cntrlfile)
         self.assertEqual(result.controlfile, "./Controlfile")
 
     def test_indirect_inclusion(self):
@@ -209,5 +213,5 @@ class TestService(unittest.TestCase):
             }
         }
         cntrlfile = "./Controlfile"
-        result = service.Service(serv, cntrlfile)
+        result = UniService(serv, cntrlfile)
         self.assertEqual(result.controlfile, "inclusion/Controlfile")

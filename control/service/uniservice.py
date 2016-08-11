@@ -179,6 +179,9 @@ class UniService(Service):
                                          dkrfile['prod'])),
                 }
             elif dkrfile == "":
+                # TODO: this is a hack to enable control to start multiple
+                # containers from the same image without building that image
+                # each time
                 self.dockerfile = {'dev': "", 'prod': ""}
             else:
                 self.dockerfile = {
@@ -189,8 +192,8 @@ class UniService(Service):
         except KeyError as e:
             # Guess that there's a Dockerfile next to the Controlfile
             dkrfile = join(abspath(dirname(self.controlfile)), 'Dockerfile')
-            devfile = dkrfile + '.dev'
-            prdfile = dkrfile + '.prod'
+            devfile = join(dkrfile, '.dev')
+            prdfile = join(dkrfile, '.prod')
             try:
                 self.dockerfile['dev'], self.dockerfile['prod'] = {
                     # devProdAreEmpty, DockerfileExists, DevProdExists

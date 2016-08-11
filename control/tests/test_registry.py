@@ -6,7 +6,7 @@ import tempfile
 import unittest
 import docker
 
-from control.container import DoesNotExist
+from control.exceptions import ContainerDoesNotExist
 from control.registry import Registry
 
 

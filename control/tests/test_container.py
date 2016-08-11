@@ -42,11 +42,11 @@ class CreateContainer(unittest.TestCase):
             "name": self.container_name,
             "hostname": "happy_path"
         }
-        container = Container(self.image, self.conf)
-        self.assertEqual(container.expected_timeout, 10)
-        self.assertEqual(container.conf['name'], self.container_name)
-        self.assertEqual(container.conf['hostname'], "happy_path")
-        self.assertEqual(container.conf['image'], self.image)
+        container = Container(self.conf)
+        self.assertEqual(container.service.expected_timeout, 10)
+        self.assertEqual(container.service.conf['name'], self.container_name)
+        self.assertEqual(container.service.conf['hostname'], "happy_path")
+        self.assertEqual(container.service.conf['image'], self.image)
 
     def test_expected_timeout(self):
         """Test mirroring unspecified values and overriding default timeout"""
@@ -55,14 +55,14 @@ class CreateContainer(unittest.TestCase):
             "name": self.container_name,
             "expected_timeout": 3
         }
-        container = Container(self.image, self.conf)
-        self.assertEqual(container.expected_timeout, 3)
-        self.assertEqual(container.conf['name'], self.container_name)
+        container = Container(self.conf)
+        self.assertEqual(container.service.expected_timeout, 3)
+        self.assertEqual(container.service.conf['name'], self.container_name)
         self.assertEqual(
-            container.conf['hostname'],
+            container.service.conf['hostname'],
             self.container_name,
             msg='Unspecified hostname not being mirrored from container name')
-        self.assertEqual(container.conf['image'], self.image)
+        self.assertEqual(container.service.conf['image'], self.image)
         with self.assertRaises(KeyError):
             container.conf['expected_timeout']
 
