@@ -14,6 +14,25 @@ from control.service import UniService
 class TestService(unittest.TestCase):
     """Test the Service class"""
 
+    def test_missing_image(self):
+        """
+        Make sure that a UniService missing an image is classified as
+        incorrect.
+        """
+        serv = {}
+        cntrlfile = "./Controlfile"
+        with self.assertRaises(InvalidControlfile):
+            result = UniService(serv, cntrlfile)
+
+        serv = {
+            "container": {
+                "name": "test",
+            }
+        }
+        cntrlfile = "./Controlfile"
+        with self.assertRaises(InvalidControlfile):
+            result = UniService(serv, cntrlfile)
+
     def test_build_only(self):
         """
         Test to make sure that controlfiles that only define the name
@@ -73,6 +92,38 @@ class TestService(unittest.TestCase):
         self.assertEqual(
             result.service,
             "server")
+        self.assertEqual(
+            result.container,
+            {
+                "name": "test",
+                "hostname": "test"
+            })
+        self.assertEqual(result.host_config, {})
+
+    def test_startable_split_dockerfile(self):
+        """
+        This container is the bare minimum that you need to run a container
+        """
+        serv = {
+            "image": "busybox",
+            "dockerfile": {
+                "prod": "MadeProd",
+                "dev": "MadeDev",
+            },
+            "container": {
+                "name": "test"
+            }
+        }
+        cntrlfile = "./Controlfile"
+        result = UniService(serv, cntrlfile)
+        self.assertEqual(result.image, "busybox")
+        self.assertEqual(result.service, "test")
+        self.assertEqual(
+            result.dockerfile['dev'],
+            join(os.getcwd(), serv['dockerfile']['dev']))
+        self.assertEqual(
+            result.dockerfile['prod'],
+            join(os.getcwd(), serv['dockerfile']['prod']))
         self.assertEqual(
             result.container,
             {
