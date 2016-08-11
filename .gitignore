@@ -8,3 +8,5 @@ env*
 **/*pyc
 **/*pyo
 **/results*.xml
+**/.coverage
+**/*,cover

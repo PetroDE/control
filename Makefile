@@ -1,7 +1,7 @@
 PYFILES := $(shell find control -name "*.py")
 EXE := control.zip
 
-.PHONY: test build clean
+.PHONY: test build clean reallyclean
 
 build: $(EXE)
 
@@ -16,12 +16,16 @@ $(EXE): $(PYFILES)
 	chmod +x $(EXE)
 
 test:
-	py.test -v --junitxml results.xml tests
+	py.test -v --cov-config .coveragerc --cov-report term-missing:skip-covered --cov=control --junitxml results.xml control/tests
+
+jenkins-test:
+	py.test -v --cov-config .coveragerc --cov-report xml --cov=control --junitxml results.xml control/tests
 
 clean:
 	-rm $(EXE)
 
-reallyclean:
-	-rm $(EXE)
-	-rm -r **/*/__pycache__
-	-rm **/*pyc
+reallyclean: clean
+	-rm -r **/__pycache__ __pycache__
+	-rm **/*pyc *pyc
+	-rm **/results*.xml results*.xml **/.coverage .coverage **/coverage.xml coverage.xml
+	-rm **/*,cover *,cover
