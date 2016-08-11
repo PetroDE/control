@@ -194,25 +194,19 @@ class UniService(Service):
             dkrfile = join(abspath(dirname(self.controlfile)), 'Dockerfile')
             devfile = join(dkrfile, '.dev')
             prdfile = join(dkrfile, '.prod')
-            try:
-                self.dockerfile['dev'], self.dockerfile['prod'] = {
-                    # devProdAreEmpty, DockerfileExists, DevProdExists
-                    (True, True, False): lambda f, d, p: (f, f),
-                    (True, False, True): lambda f, d, p: (d, p),
-                    (True, False, False): lambda f, d, p: ('', ''),
-                    # This list is sparsely populated because these are the
-                    # only conditions that mean the values need to be guessed
-                }[(
-                    not self.dockerfile['dev'] and not self.dockerfile['prod'],
-                    isfile(dkrfile),
-                    isfile(devfile) and isfile(prdfile)
-                )](dkrfile, devfile, prdfile)
-                self.logger.debug('setting dockerfile: %s', self.dockerfile)
-            except KeyError as e:
-                self.logger.warning(
-                    '%s: problem setting dockerfile: %s missing',
-                    self.service,
-                    e)
+            self.dockerfile['dev'], self.dockerfile['prod'] = {
+                # devProdAreEmpty, DockerfileExists, DevProdExists
+                (True, True, False): lambda f, d, p: (f, f),
+                (True, False, True): lambda f, d, p: (d, p),
+                (True, False, False): lambda f, d, p: ('', ''),
+                # This list is sparsely populated because these are the
+                # only conditions that mean the values need to be guessed
+            }[(
+                not self.dockerfile['dev'] and not self.dockerfile['prod'],
+                isfile(dkrfile),
+                isfile(devfile) and isfile(prdfile)
+            )](dkrfile, devfile, prdfile)
+            self.logger.debug('setting dockerfile with fallback: %s', self.dockerfile)
 
         if 'fromline' in serv:
             fline = serv.pop('fromline')

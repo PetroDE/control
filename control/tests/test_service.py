@@ -132,6 +132,22 @@ class TestService(unittest.TestCase):
             })
         self.assertEqual(result.host_config, {})
 
+    def test_weird_dockerfiles(self):
+        """
+        Make sure that if someone specifies weird dockerfile environments a
+        warning is logged
+        """
+        serv = {
+            "image": "busybox",
+            "dockerfile": {
+                "base": "Dockerfile.base"
+            }
+        }
+        cntrlfile = "./Controlfile"
+        result = UniService(serv, cntrlfile)
+        self.assertEqual(result.dockerfile['dev'], '')
+        self.assertEqual(result.dockerfile['prod'], '')
+
     def test_full(self):
         """
         Throw the beans at the thing and make sure that everything makes its
