@@ -3,6 +3,7 @@ A little bit of trickery to enable single depth indexing of all values of a
 service.
 """
 
+import itertools
 import logging
 from os.path import abspath, dirname, isfile, join
 from copy import deepcopy
@@ -110,7 +111,8 @@ class UniService(Service):
 
     abbreviations = {
         'cmd': 'command',
-        'env': 'environment'
+        'env': 'environment',
+        'envfile': 'env_file',
     }
 
     all_options = (
@@ -263,11 +265,21 @@ class UniService(Service):
         hc = dclient.create_host_config(**self.host_config)
         r = self.container.copy()
         r['host_config'] = hc
-        if self.env_file:
-            envs = parse_env_file(self.env_file)
-            r['environment'] = (
-                r.get('environment', []) +
-                ["{}={}".format(k, v) for k, v in envs.items()])
+        if self.env_file and isfile(self.env_file):
+            # Apply env vars in this order so that envs defined in
+            # the Controlfile take precedence over the envfile
+            r['environment'] = dict(
+                parse_env_file(self.env_file),
+                **{
+                    x[0]: x[2]
+                    for x in [
+                        x.partition('=')
+                        for x in r.get('environment', [])
+                    ]
+                }
+            )
+        elif self.env_file:
+            self.logger.warning('Env file is missing: %s', self.env_file)
         self.logger.debug('combined: %s', r)
         return r
 
