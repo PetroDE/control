@@ -29,7 +29,6 @@ class Container:
 
     def create(self):
         try:
-            self.service.prepare_container_options()
             return CreatedContainer(
                 dclient.create_container(
                     self.service.image,
