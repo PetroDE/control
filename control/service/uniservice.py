@@ -3,9 +3,9 @@ A little bit of trickery to enable single depth indexing of all values of a
 service.
 """
 
-import itertools
 import logging
 from os.path import abspath, dirname, isfile, join
+import traceback
 from copy import deepcopy
 
 from docker.utils import create_host_config, parse_env_file
@@ -66,6 +66,7 @@ class UniService(Service):
     """
 
     service_options = {
+        'commands',
         'container',
         'controlfile',
         'dockerfile',
@@ -137,6 +138,7 @@ class UniService(Service):
         self.logger = logging.getLogger('control.service.UniService')
         self.dockerfile = {'dev': '', 'prod': ''}
         self.fromline = {'dev': '', 'prod': ''}
+        self.commands = {}
         self.container = {}
         self.host_config = {}
         self.events = {}

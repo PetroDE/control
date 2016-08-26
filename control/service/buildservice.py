@@ -36,6 +36,7 @@ class BuildService(Service):
         self.logger = logging.getLogger('control.service.BuildService')
         self.dockerfile = {'dev': '', 'prod': ''}
         self.fromline = {'dev': '', 'prod': ''}
+        self.commands = {}
         self.events = {}
 
         serv = deepcopy(service)

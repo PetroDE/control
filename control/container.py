@@ -7,7 +7,6 @@ import shutil
 import docker
 
 from control.dclient import dclient
-from control.shittylogging import log
 from control.options import options
 from control.exceptions import (
     ContainerAlreadyExists, ContainerDoesNotExist,
@@ -28,6 +27,7 @@ class Container:
         self.logger = logging.getLogger('control.container.Container')
 
     def create(self):
+        """create a container"""
         try:
             return CreatedContainer(
                 dclient.create_container(
@@ -57,8 +57,11 @@ class Container:
 
 
 class CreatedContainer(Container):
+    """Handle things you can do to a running container"""
+
     def __init__(self, name, service):
         Container.__init__(self, service)
+        self.logger = logging.getLogger('control.container.CreatedContainer')
         if not service['name']:
             raise ContainerDoesNotExist(service.service)
         try:
@@ -68,6 +71,7 @@ class CreatedContainer(Container):
             raise ContainerDoesNotExist(name)
 
     def start(self):
+        """Start a created container"""
         try:
             dclient.start(self.inspect['Id'])
         except docker.errors.NotFound as e:
@@ -79,16 +83,19 @@ class CreatedContainer(Container):
         return self.inspect['State']['Running']
 
     def stop(self):
+        """stop a running container"""
         dclient.stop(self.inspect['Id'], timeout=self.service.expected_timeout)
         self.inspect = dclient.inspect_container(self.inspect['Id'])
         return not self.inspect['State']['Running']
 
     def kill(self):
+        """kill a running container"""
         dclient.kill(self.inspect['Id'])
         self.inspect = dclient.inspect_container(self.inspect['Id'])
         return not self.inspect['State']['Running']
 
     def remove(self):
+        """remove a stopped container"""
         dclient.remove_container(self.inspect['Id'], v=True)
         try:
             self.inspect = dclient.inspect_container(self.inspect['Id'])
@@ -96,28 +103,56 @@ class CreatedContainer(Container):
         except docker.errors.NotFound:
             return True
 
+    def logs(self, from_start=False, timestamps=False):
+        """
+        Get the logs from a container. Defaults to logs from the creation
+        of the generator. Specify from_start=True to get all logs back to container
+        creation.
+        """
+        return dclient.logs(container=self.inspect['Name'],
+                            stdout=True,
+                            stderr=True,
+                            stream=True,
+                            timestamps=timestamps,
+                            tail="all" if from_start else 0)
+
+    def exec(self, cmd):
+        """
+        Run a command inside the container. Returns a generator with the
+        output
+        """
+        execd = dclient.exec_create(container=self.service['name'], cmd=cmd, tty=True)
+        return dclient.exec_start(execd['Id'], stream=True)
+
     def remove_volumes(self):
+        """Any volumes that were in use by the container will be removed"""
         if options.debug:
-            log('Docker has removed these volumes:', level='debug')
-            for v in (v['Source'] for v in self.inspect['Mounts'] if not os.path.isdir(v['Source'])):
-                log('  {}'.format(v), level='debug')
-            log('Attempting to remove these volume locations:', level='debug')
-            for v in (v['Source'] for v in self.inspect['Mounts'] if os.path.isdir(v['Source'])):
-                log('  {}'.format(v), level='debug')
+            self.logger.debug('Docker has removed these volumes:')
+            for v in (v['Source']
+                      for v in self.inspect['Mounts']
+                      if not os.path.isdir(v['Source'])):
+                self.logger.debug('  %s', v)
+            self.logger.debug('Attempting to remove these volume locations:')
+            for v in (v['Source']
+                      for v in self.inspect['Mounts']
+                      if os.path.isdir(v['Source'])):
+                self.logger.debug('  %s', v)
         for vol in self.inspect['Mounts']:
             if vol['Source'].startswith('/var/lib/docker/volumes'):
-                log('having docker remove {}'.format(vol['Source']), level='debug')
+                self.logger.debug('having docker remove %s', vol['Source'])
                 try:
                     dclient.remove_volume(vol['Name'])
                 except docker.errors.APIError as e:
                     if 'no such volume' in e.explanation.decode('utf-8'):
                         continue
-                    log('cannot remove volume: {}'.format(e.explanation.decode('utf-8'), level='info'))
+                    self.logger.warning('cannot remove volume: %s',
+                                        e.explanation.decode('utf-8'))
             elif os.path.isdir(vol['Source']):
-                log('removing {}'.format(vol['Source']), level='debug')
+                self.logger.debug('removing %s', vol['Source'])
                 try:
                     shutil.rmtree(vol['Source'])
                 except PermissionError as e:
-                    print('Cannot remove directory {}: {}'.format(vol['Source'], e))
+                    self.logger.warning('Cannot remove directory %s: %s',
+                                        vol['Source'], e)
             else:
-                log('docker removed volume {}'.format(vol['Source']), level='debug')
+                self.logger.debug('docker removed volume %s', vol['Source'])

@@ -193,6 +193,29 @@ class Controlfile:
         """
         return self.services.keys()
 
+    def get_all_commands(self):
+        """
+        Return a joined list of all commands defined across all services
+        """
+        # for service in self.service:
+        #     if (
+        #             (isinstance(service, UniService) or
+        #              isinstance(service, BuildService)) and
+        #             service.commands):
+        #         commands |= service.commands.keys()
+        # Set comprehension to pull out all the unique keys
+        return sorted({
+            key
+            for key in (
+                service.commands.keys()
+                for service in self.services
+                if (
+                        isinstance(service, UniService) or
+                        isinstance(service, BuildService)
+                )
+            )
+        })
+
 
 def open_servicefile(service, location):
     """

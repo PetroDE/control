@@ -16,10 +16,10 @@ import logging
 import signal
 import sys
 
-
-from control.cli_args import build_early_parser
+from control.cli_args import build_parser
 from control.controlfile import Controlfile
 from control.dclient import dclient
+from control.functions import function_dispatch
 from control.options import options
 from control.service import MetaService
 
@@ -27,7 +27,7 @@ module_logger = logging.getLogger('control')
 module_logger.setLevel(logging.DEBUG)
 
 
-def sigint_handler(sig, frame):
+def sigint_handler(sig, frame):  # pylint: disable=unused-argument
     """Gracefully handle receiving ctrl-c"""
     print("Killing builds")
     sys.exit(130)
@@ -45,31 +45,21 @@ def main(args):
     console_loghandler = logging.StreamHandler()
     signal.signal(signal.SIGINT, sigint_handler)
 
-    parser = build_early_parser()
+    parser = build_parser()
+    parser.parse_args(args, namespace=options)
+    console_loghandler.setLevel(logging.INFO)
+    if options.debug:
+        console_loghandler.setLevel(logging.DEBUG)
+    module_logger.addHandler(console_loghandler)
+    module_logger.debug("switching to debug logging")
 
-    options, more_args = parser.parse_known_args(args, namespace=options)
-    sys.exit(5)
-
-    parser.parse_args(more_args, namespace=options)
+    # Read in a Controlfile if one exists
+    ctrlfile_location = options.controlfile
+    ctrl = Controlfile(ctrlfile_location)
 
     if not dclient:
         print('Docker is not running. Please start docker.', file=sys.stderr)
         sys.exit(2)
-
-    if options.debug:
-        console_loghandler.setLevel(logging.DEBUG)
-    else:
-        console_loghandler.setLevel(logging.INFO)
-    module_logger.addHandler(console_loghandler)
-    module_logger.debug("switching to debug logging")
-    module_logger.debug(vars(options))
-
-    # Read in a Controlfile if one exists
-    ctrlfile_location = options.controlfile
-    try:
-        ctrl = Controlfile(ctrlfile_location)
-    except NotImplementedError:
-        module_logger.info("That's it")
 
     # If no services were specified on the command line, default to required
     if len(options.services) == 0:
@@ -101,10 +91,9 @@ def main(args):
         module_logger.debug(vars(ctrl.services[options.services[0]]))
     elif options.dockerfile and len(options.services) > 1:
         module_logger.info('Ignoring dockerfile specified in arguments. Too many services.')
-
     module_logger.debug(vars(options))
 
-    ret = options.func(options, ctrl)
+    ret = function_dispatch(options, ctrl)
 
     if not ret:
         sys.exit(1)

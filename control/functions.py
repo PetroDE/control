@@ -57,7 +57,7 @@ def pulling(repo):
 
     if options.pull is False:  # We actually do need to check the difference of None and False
         return False
-    elif (options.func.__name__ in ['default', 'build'] and
+    elif (options.command in ['default', 'build'] and
           not repo.registry and
           not options.pull):
         return False
@@ -75,6 +75,15 @@ def print_formatted(line):
     if 'id' in line.keys() and ('progressDetail' not in line.keys() or not line['progressDetail']):
         print('{}: {}'.format(line['id'], line['status']))
         return
+
+
+def function_dispatch(args, ctrl):
+    """Decide which function to call"""
+    try:
+        return dispatch_dict[options.command](args, ctrl)
+    except KeyError:
+        pass
+    return command(args, ctrl)
 
 
 def run_event(event, env, service):
@@ -110,6 +119,8 @@ def build(args, ctrl):  # TODO: DRY it up
 
     for name, service in sorted(((name, ctrl.services[name]) for name in args.services)):
         print('building {}'.format(name))
+        module_logger.debug(type(service))
+        module_logger.debug(service.__dict__)
         module_logger.debug(service['image'])
         module_logger.debug(service['controlfile'])
         module_logger.debug(service['dockerfile']['dev'])
@@ -326,7 +337,6 @@ def opencontainer(args, ctrl):
     except ContainerDoesNotExist:
         pass  # We need the container to not exist
     else:
-        print('stopping {}'.format(ctrl.services[name]['name']))
         if not (container.stop() and container.remove()):
             print('could not stop {}'.format(ctrl.services[name]['name']))
             return False
@@ -339,3 +349,66 @@ def default(args, ctrl):
     if build(args, ctrl):
         return restart(args, ctrl)
     return False
+
+
+def command(args, ctrl):
+    """
+    Call a custom command on a container. If the container wasn't running
+    before the command was run, then the container is left in  the same state.
+    """
+    for service in sorted(
+            ctrl.services[name]
+            for name in args.services
+            if (options.command in ctrl.services[name].commands.keys() or
+                    '*' in ctrl.services[name].commands.keys())):
+        entry, cmd = service.commands[options.command
+                                      if options.command in service.commands.keys()
+                                      else '*'
+                                     ].partition(' ')[::2]
+        service['entrypoint'] = entry
+        service['command'] = cmd.format(COMMAND=options.command)
+
+        try:
+            container = CreatedContainer(service['name'], service)
+            did_not_exist = False
+        except ContainerDoesNotExist:
+            container = Container(service)
+            did_not_exist = True
+        if did_not_exist:
+            try:
+                container = container.create()
+                container.start()
+            except ContainerException as e:
+                module_logger.debug('outer start containerexception caught')
+                module_logger.critical(e)
+            output = container.logs(from_start=True)
+        else:
+            output = container.exec(' '.join([service['entrypoint'],
+                                              service['command']]))
+        for line in (l.decode('utf-8').strip() for l in output):
+            print(line)
+
+        if did_not_exist:
+            if options.force:
+                module_logger.debug('Killing %s', service['name'])
+                container.kill()
+            else:
+                module_logger.debug('Stopping %s', service['name'])
+                container.stop()
+            module_logger.debug('Removing %s', service['name'])
+            container.remove()
+            if options.wipe:
+                container.remove_volumes()
+    return True
+
+
+dispatch_dict = {
+    "start": restart,
+    "restart": restart,
+    "rere": default,
+    "stop": stop,
+    "open": opencontainer,
+    "build": build,
+    "build-prod": build_prod,
+    "default": default,
+}
