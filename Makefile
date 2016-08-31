@@ -15,8 +15,11 @@ $(EXE): $(PYFILES)
 	-rm controli.zip
 	chmod +x $(EXE)
 
+qtest:
+	py.test --tb=no --cov-config .coveragerc --cov-report term-missing --cov=control -s control/tests
+
 test:
-	py.test -v --cov-config .coveragerc --cov-report term-missing:skip-covered --cov=control --junitxml results.xml control/tests
+	py.test -v --cov-config .coveragerc --cov-report term-missing --cov=control --junitxml results.xml control/tests
 
 jenkins-test:
 	-py.test -v --cov-config .coveragerc --cov-report xml --cov=control --junitxml results.xml control/tests
