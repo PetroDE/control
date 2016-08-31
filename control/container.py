@@ -11,7 +11,7 @@ from control.options import options
 from control.exceptions import (
     ContainerAlreadyExists, ContainerDoesNotExist,
     VolumePseudoExists, InvalidVolumeName,
-    TransientVolumeCreation
+    TransientVolumeCreation, ImageNotFound
 )
 
 
@@ -39,6 +39,9 @@ class Container:
                 raise VolumePseudoExists(e.explanation.decode('utf-8'))
             elif 'volume not found' in e.explanation.decode('utf-8'):
                 raise TransientVolumeCreation(e.explanation.decode('utf-8'))
+            elif 'No such image' in e.explanation.decode('utf-8'):
+                raise ImageNotFound(self.service.image)
+
             self.logger.debug('Unexpected Docker 404')
             self.logger.debug(e)
             self.logger.debug(e.response)
@@ -61,6 +64,7 @@ class CreatedContainer(Container):
 
     def __init__(self, name, service):
         Container.__init__(self, service)
+        self.exec_ids = []
         self.logger = logging.getLogger('control.container.CreatedContainer')
         if not service['name']:
             raise ContainerDoesNotExist(service.service)
@@ -122,7 +126,16 @@ class CreatedContainer(Container):
         output
         """
         execd = dclient.exec_create(container=self.service['name'], cmd=cmd, tty=True)
+        self.exec_ids.append(execd['Id'])
         return dclient.exec_start(execd['Id'], stream=True)
+
+    def get_exec(self):
+        """Return the top exec id in the stack"""
+        return self.exec_ids[-1]
+
+    def inspect_exec(self):
+        """Return the inspect dict for the top exec"""
+        return dclient.exec_inspect(self.get_exec())
 
     def remove_volumes(self):
         """Any volumes that were in use by the container will be removed"""

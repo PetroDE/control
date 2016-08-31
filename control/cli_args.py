@@ -40,6 +40,10 @@ def build_parser():
     parser.add_argument(
         '-n', '--name', help='the name to give to the container')
     parser.add_argument(
+        '-r', '--replace', action='store_true', help='Use with container '
+        'commands. If the container is running the command will take the '
+        'container down and run the command exclusively in the container.')
+    parser.add_argument(
         '-w', '--wipe', action='store_true', help='Make sure that volumes are '
         'empty after stopping. May require sudo. THIS IS EXTREMELY DANGEROUS')
     parser.add_argument(

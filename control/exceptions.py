@@ -77,3 +77,12 @@ class TransientVolumeCreation(ContainerException):
     def __str__(self):
         return '''You cannot create transient volumes in the Controlfile.
         Name your volume, or bind it to the host'''
+
+
+# Image exceptions
+class ImageNotFound(ControlException):
+    def __init__(self, image):
+        self.image = image
+
+    def __str__(self):
+        return '''Image does not exist: {}'''.format(self.image)
