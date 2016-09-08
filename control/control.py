@@ -55,7 +55,11 @@ def main(args):
 
     # Read in a Controlfile if one exists
     ctrlfile_location = options.controlfile
-    ctrl = Controlfile(ctrlfile_location)
+    try:
+        ctrl = Controlfile(ctrlfile_location)
+    except FileNotFoundError as error:
+        module_logger.critical(error)
+        sys.exit(2)
 
     if not dclient:
         print('Docker is not running. Please start docker.', file=sys.stderr)

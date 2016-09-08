@@ -93,7 +93,7 @@ class Controlfile:
         variables.update(os.environ)
 
         data = self.read_in_file(controlfile_location)
-        if 'services' not in data:
+        if data and 'services' not in data:
             serv = UniService(data, controlfile_location)
             data = {"services": {serv.service: data}}
         self.logger.debug("variables to substitute in: %s", variables)
@@ -105,7 +105,7 @@ class Controlfile:
             with open(controlfile, 'r') as f:
                 data = json.load(f)
         except FileNotFoundError as error:
-            self.logger.warning("Cannot open controlfile %s", controlfile)
+            raise
         except json.decoder.JSONDecodeError as error:
             self.logger.warning("Controlfile %s is malformed: %s", controlfile, error)
         else:
@@ -125,6 +125,7 @@ class Controlfile:
         self.logger.debug('Received %i variables', len(variables))
         while 'controlfile' in data:
             ctrlfile = data['controlfile']
+            # TODO write a test that gets a FileNotFound thrown from here
             data = self.read_in_file(ctrlfile)
         data['service'] = service_name
 
