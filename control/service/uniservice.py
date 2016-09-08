@@ -5,15 +5,16 @@ service.
 
 import logging
 from os.path import abspath, dirname, isfile, join
-import traceback
 from copy import deepcopy
 
 from docker.utils import create_host_config, parse_env_file
 from docker.api import ContainerApiMixin
 
+from control.cli_builder import builder
 from control.dclient import dclient
-from control.repository import Repository
 from control.exceptions import InvalidControlfile
+from control.options import options
+from control.repository import Repository
 from control.service.service import Service
 
 module_logger = logging.getLogger('control.service')
@@ -251,6 +252,50 @@ class UniService(Service):
         self.logger.debug('service host_config: %s', self.host_config)
 
         self._fill_in_holes()
+
+    def dump_build(self, prod=False, pretty=True):
+        """dump out a CLI version of how this image would be built"""
+        rep = builder('build', pretty=pretty) \
+            .tag(self.image) \
+            .path(dirname(self.controlfile)) \
+            .file(self.dockerfile['prod'] if prod else self.dockerfile['dev']) \
+            .pull(options.pull) \
+            .rm(options.rm) \
+            .force_rm(options.force) \
+            .no_cache(not options.cache)
+        return rep
+
+    def dump_run(self, pretty=True):
+        """dump out a CLI version of how this container would be started"""
+        rep = builder('run', pretty=pretty).image(self.image) \
+                .volume(self.volumes) \
+                .env_file(self.env_file)
+        for k, v in self.container.items():
+            rep = {
+                'command': rep.command,
+                'cpu_shares': rep.cpu_shares,
+                'detach': rep.detach,
+                'entrypoint': rep.entrypoint,
+                'environment': rep.env,
+                'hostname': rep.hostname,
+                'name': rep.name,
+                'ports': rep.publish,
+                'stdin_open': rep.interactive,
+                'tty': rep.tty,
+                'user': rep.user,
+                'working_dir': rep.workdir,
+            }[k](v)
+        for k, v in self.host_config.items():
+            rep = {
+                'devices': rep.device,
+                'dns': rep.dns,
+                'dns_search': rep.dns_search,
+                'extra_hosts': rep.add_host,
+                'ipc_mode': rep.ipc,
+                'links': rep.link,
+                'volumes_from': rep.volumes_from,
+            }[k](v)
+        return rep
 
     def prepare_container_options(self):
         """
