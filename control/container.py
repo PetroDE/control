@@ -36,11 +36,11 @@ class Container:
                 self.service)
         except docker.errors.NotFound as e:
             if 'chown' in e.explanation.decode('utf-8'):
-                raise VolumePseudoExists(e.explanation.decode('utf-8'))
+                raise VolumePseudoExists(e.explanation.decode('utf-8')) from None
             elif 'volume not found' in e.explanation.decode('utf-8'):
-                raise TransientVolumeCreation(e.explanation.decode('utf-8'))
+                raise TransientVolumeCreation(e.explanation.decode('utf-8')) from None
             elif 'No such image' in e.explanation.decode('utf-8'):
-                raise ImageNotFound(self.service.image)
+                raise ImageNotFound(self.service.image) from None
 
             self.logger.debug('Unexpected Docker 404')
             self.logger.debug(e)
@@ -73,6 +73,13 @@ class CreatedContainer(Container):
         except docker.errors.NotFound as e:
             self.logger.debug(e)
             raise ContainerDoesNotExist(name)
+
+    def check(self):
+        """
+        Update the inspect dict, even though there shouldn't have been a state
+        transition.
+        """
+        self.inspect = dclient.inspect_container(self.inspect['Id'])
 
     def start(self):
         """Start a created container"""
