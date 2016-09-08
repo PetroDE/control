@@ -235,3 +235,61 @@ class RunBuilderTests(unittest.TestCase):
         result = builder('run').env('FOO=bar').user('1000').detach()
         with self.assertRaises(ControlException):
             str(result)
+
+
+class ExecBuilderTests(unittest.TestCase):
+    """make sure that exec commands are correct"""
+
+    def test_incompatible_command_raises(self):
+        """make sure a command that isn't a list or a string are unhappy"""
+        with self.assertRaises(TypeError):
+            builder('exec').command((0, 1))
+
+    def test_pass_command_list(self):
+        """
+        docker-py accepts command as a list. I want to be able to pass that
+        straight into this library and have it work correctly
+        """
+        result = builder('exec', pretty=False).container('foo').command(
+            ['ps', 'aux']
+        )
+        self.assertEqual(str(result),
+                         "docker exec foo ps aux")
+
+    def test_raises_missing_positional(self):
+        """
+        docker run needs an image to start a container from, and there's no
+        good way to assume a default, so we just force the user to specify an
+        image before they try to get the cli command
+        """
+        result = builder('exec')
+        with self.assertRaises(ControlException):
+            str(result)
+        result = result.container('foo')
+        with self.assertRaises(ControlException):
+            str(result)
+        result = builder('exec').command('ps aux')
+        with self.assertRaises(ControlException):
+            str(result)
+
+
+class ContainerBuilderTest(unittest.TestCase):
+    """builders that take a list of containers produce correct output"""
+
+    def test_raises_missing_positional(self):
+        """
+        docker rm should raise an error when there were no containers specified
+        """
+        result = builder('rm')
+        with self.assertRaises(ControlException):
+            str(result)
+
+    def test_adding_containers(self):
+        """make sure that containers are kept in order, and don't error"""
+        result = builder('rm').container('abernathy')
+        self.assertEqual(str(result),
+                         "docker rm abernathy")
+        result = result.container(['foo', 'bar']).container({'foobar'})
+        result = result.container(('hawking')).container(0)
+        self.assertEqual(str(result),
+                         "docker rm abernathy foo bar foobar hawking 0")

@@ -4,12 +4,20 @@ module builds the cli parser for control.
 
 I apologize for the amount of disgusting in this file, but I really didn't want
 to manually enumerate all of these lists by writing the full functions.
+
+TODO: Even more strict refactor into:
+    Builder
+    TargetsBuilder
+    TargetArgsBuilder
+so the file is shorter and the tests don't have to be as redundant as they are.
 """
 
 from control.exceptions import ControlException
 
 bool_args = [
     ('no_cache', {'arg': '--no-cache', 'doc': 'add --no-cache to the command'}),
+    ('force', {'arg': '--force', 'doc': 'pass --force to the command'}),
+    ('force_rm', {'arg': '--force-rm', 'doc': 'always remove intermediates'}),
     ('pull', {'arg': '--pull', 'doc': 'add --pull to the command'}),
     ('rm', {'arg': '--rm', 'doc': 'add --rm to the command'}),
     ('detach', {'arg': '--detach', 'doc': 'run the container in the background'}),
@@ -20,13 +28,16 @@ bool_args = [
 ]
 
 single_args = [
-    ('path', {'arg': '--file', 'doc': 'override default Dockerfile location'}),
+    ('cpu_shares', {'arg': '--cpu-shares', 'doc': 'relative weight of usage of '
+                                                  'shared CPU'}),
+    ('file', {'arg': '--file', 'doc': 'override default Dockerfile location'}),
     ('tag', {'arg': '--tag', 'doc': 'tag the image that is built'}),
     ('entrypoint', {'arg': '--entrypoint', 'doc': 'set/override an entrypoint '
                                                   'for the container'}),
     ('hostname', {'arg': '--hostname', 'doc': 'set a hostname for the container'}),
     ('ipc', {'arg': '--ipc', 'doc': 'IPC namespace to use'}),
     ('name', {'arg': '--name', 'doc': 'Specify a container name'}),
+    ('time', {'arg': '--time', 'doc': 'seconds to wait'}),
     ('user', {'arg': '--user', 'doc': 'specify a username or UID for the '
                                       'processes to be spawned under'}),
     ('workdir', {'arg': '--workdir', 'doc': 'working directory in the container'}),
@@ -53,7 +64,7 @@ list_args = [
     ('publish', {'arg': '--publish', 'doc': 'open the port in the container '
                                             'to the host'}),
     ('volume', {'arg': '--volume', 'doc': 'bind a volume to the container'}),
-    ('volumes-from', {'arg': '--volumes-from', 'doc': 'bind volumes from a '
+    ('volumes_from', {'arg': '--volumes-from', 'doc': 'bind volumes from a '
                                                       'container to this one'}),
 ]
 
@@ -70,11 +81,11 @@ def builder(command, *args, **kwargs):
     # }
     return {
         'build': BuildBuilder(command, *args, **kwargs),
-        'exec': Builder(command, *args, **kwargs),
-        'rm': Builder(command, *args, **kwargs),
-        'rmi': Builder(command, *args, **kwargs),
+        'exec': ExecBuilder(command, *args, **kwargs),
+        'rm': ContainerBuilder(command, *args, **kwargs),
+        'rmi': ContainerBuilder(command, *args, **kwargs),
         'run': RunBuilder(command, *args, **kwargs),
-        'stop': Builder(command, *args, **kwargs)
+        'stop': ContainerBuilder(command, *args, **kwargs)
     }[command]
 
 
@@ -179,6 +190,77 @@ class RunBuilder(Builder):
             return '{}{i}{sep}{cmd}'.format(s, sep=self.sep, i=self.image_, cmd=self.command_)
         else:
             return '{}{i}'.format(s, i=self.image_)
+
+
+class ExecBuilder(Builder):
+    """
+    docker exec takes a container a "command" and "args". This is, naturally,
+    needlessly complex. The ExecBuilder takes the standard options, a container,
+    and a command.
+    """
+
+    def __init__(self, cmd, pretty=True):
+        super(ExecBuilder, self).__init__(cmd, pretty=pretty)
+        self.container_ = ''
+        self.command_ = ''
+
+    def container(self, name):
+        """set the container the exec should be using"""
+        self.container_ = name
+        return self
+
+    def command(self, value):
+        """run this command from the entrypoint"""
+        if isinstance(value, list):
+            self.command_ = ' '.join(value)
+        elif isinstance(value, str):
+            self.command_ = value
+        else:
+            raise TypeError(value)
+        return self
+
+    def __str__(self):
+        if not self.container_:
+            raise ControlException('No container declared. Cannot create docker exec command')
+        if not self.command_:
+            raise ControlException('No command declared. Cannot create docker exec command')
+        s = super(ExecBuilder, self).__str__()
+        return '{}{i}{sep}{cmd}'.format(s,
+                                        sep=self.sep,
+                                        i=self.container_,
+                                        cmd=self.command_)
+
+
+class ContainerBuilder(Builder):
+    """
+    Several docker commands take the standard list of options, but want a list
+    of containers passed to them as a positional arguments.
+    """
+
+    def __init__(self, cmd, pretty=True):
+        super(ContainerBuilder, self).__init__(cmd, pretty=pretty)
+        self.container_ = []
+
+    def __str__(self):
+        if not self.container_:
+            # You are correct, rmi will error out saying 'container' instead of
+            # image. Deal with it.
+            raise ControlException('No container declared. Cannot create '
+                                   'docker {} command'.format(self.cmd))
+        self.positional = ' '.join(self.container_)
+        return super(ContainerBuilder, self).__str__()
+
+    def container(self, value):
+        """pass a container (or list of containers) to rm"""
+        if value and isinstance(value, list):
+            self.container_ += value
+        elif value and isinstance(value, set):
+            self.container_ += list(value)
+        elif value and isinstance(value, str):
+            self.container_.append(value)
+        else:
+            self.container_.append(str(value))
+        return self
 
 
 class Argument:
