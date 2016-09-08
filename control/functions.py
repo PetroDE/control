@@ -1,6 +1,5 @@
 """The high level operations that Control can perform"""
 
-import copy
 import json
 import logging
 import os
@@ -11,6 +10,7 @@ import tempfile
 import dateutil.parser as dup
 import docker
 
+from control.cli_builder import builder
 from control.container import Container, CreatedContainer
 from control.dclient import dclient
 from control.exceptions import (ContainerDoesNotExist, ContainerException,
@@ -320,6 +320,7 @@ def opencontainer(args, ctrl):
         print('Cannot open more than 1 service in 1 call')
         return False
     name = args.services[0]
+    serv = ctrl.services[name]
     try:
         if isinstance(ctrl.services[name]['open'], list):
             (
@@ -338,6 +339,10 @@ def opencontainer(args, ctrl):
         ctrl.services[name]['command'] = ''
     ctrl.services[name]['stdin_open'] = True
     ctrl.services[name]['tty'] = True
+    if options.dump:
+        print(serv.dump_run())
+        return True
+
     try:
         container = CreatedContainer(ctrl.services[name]['name'], ctrl.services[name])
     except ContainerDoesNotExist:
@@ -368,7 +373,7 @@ def command(args, ctrl):
         ctrl.services[name]
         for name in args.services
         if (options.command in ctrl.services[name].commands.keys() or
-                '*' in ctrl.services[name].commands.keys()))
+            '*' in ctrl.services[name].commands.keys()))
     for service in services:
         if len(services) > 1:
             module_logger.info('running command in %s', service['name'])
@@ -388,8 +393,16 @@ def command(args, ctrl):
         try:
             container = CreatedContainer(service['name'], service)
             if options.replace:
-                container.stop()
-                container.remove()
+                if options.dump:
+                    print(
+                        builder('stop').container(service['name']).time(service.expected_timeout)
+                    )
+                    print(
+                        builder('rm').container(service['name']).time(service.expected_timeout)
+                    )
+                else:
+                    container.stop()
+                    container.remove()
                 put_it_back = True
                 raise ContainerDoesNotExist(service['name'])
             if not container.inspect['State']['Running']:
@@ -401,33 +414,59 @@ def command(args, ctrl):
             module_logger.debug("saving service: ('%s', '%s')",
                                 service['entrypoint'],
                                 service['command'])
-            saved_entcmd = (service['entrypoint'], service['command'])
+            saved_entcmd = (service['entrypoint'], service['command'], service['stdin_open'])
             service['entrypoint'] = '/bin/cat'
             service['command'] = ''
+            service['stdin_open'] = True
+            service['tty'] = True
             container = Container(service)
             kill_it = True
-            try:
-                container = container.create()
-                container.start()
-            except ContainerException as e:
-                module_logger.debug('outer start containerexception caught')
-                module_logger.critical(e)
-                no_err = False
+            # TODO: when does this get printed?
+            # if not options.dump:
+            #     print(service.dump_run())
+            # else:
+            if not options.dump:
+                try:
+                    container = container.create()
+                    container.start()
+                except ImageNotFound as e:
+                    module_logger.critical(e)
+                    continue
+                except ContainerException as e:
+                    module_logger.debug('outer start containerexception caught')
+                    module_logger.critical(e)
+                    no_err = False
+        # module_logger.debug('Container running: %s', container.inspect['State']['Running'])
+        # time.sleep(1)
+        # container.check()
+        # module_logger.debug('Container running: %s', container.inspect['State']['Running'])
 
         # We take the generator that docker gives us for the exec output and
         # print it to the console. The Exec spawned a TTY so programs that care
         # will output color.
-        gen = (l.decode('utf-8') for l in container.exec(cmd))
-        for line in gen:
-            print(line, end='')
-        if container.inspect_exec()['ExitCode'] != 0:
-            no_err = False
+        if options.dump and not kill_it:
+            print(builder('exec', pretty=False).container(service['name']).command(cmd).tty())
+        elif options.dump:
+            ent_, _, cmd_ = cmd.partition(' ')
+            run = service.dump_run() \
+                .entrypoint(ent_) \
+                .command(cmd_) \
+                .rm() \
+                .tty() \
+                .interactive(saved_entcmd[2])
+            print(run)
+        else:
+            gen = (l.decode('utf-8') for l in container.exec(cmd))
+            for line in gen:
+                print(line, end='')
+            if container.inspect_exec()['ExitCode'] != 0:
+                no_err = False
 
         # After the command we make sure to clean up the container. Since we
         # spawned the container running a command that just holds the container
         # open, if we replaced a running container we need to take down this
         # dummy container and start it with its normal entrypoint
-        if put_it_back or kill_it:
+        if (put_it_back or kill_it) and not options.dump:
             if options.force:
                 module_logger.debug('Killing %s', service['name'])
                 container.kill()
@@ -447,17 +486,24 @@ def command(args, ctrl):
                 service['command'] = saved_entcmd[1]
             else:
                 del service['command']
+            if isinstance(saved_entcmd[2], bool):
+                service['stdin_open'] = saved_entcmd[2]
+            else:
+                del service['stdin_open']
             module_logger.debug("retrieved service: ('%s', '%s')",
                                 service['entrypoint'],
                                 service['command'])
             container = Container(service)
-            try:
-                container = container.create()
-                container.start()
-            except ContainerException as e:
-                module_logger.debug('outer start containerexception caught')
-                module_logger.critical(e)
-                no_err = False
+            if options.dump:
+                print(service.dump_run())
+            else:
+                try:
+                    container = container.create()
+                    container.start()
+                except ContainerException as e:
+                    module_logger.debug('outer start containerexception caught')
+                    module_logger.critical(e)
+                    no_err = False
     return no_err
 
 

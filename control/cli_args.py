@@ -52,6 +52,9 @@ def build_parser():
     parser.add_argument(
         '--dockerfile', help='override the dockerfile used to build the image')
     parser.add_argument(
+        '--dump', action='store_true', help='dump out the docker command that '
+        'will perform the operation that this command would')
+    parser.add_argument(
         '--cache', action='store_false',
         help='allow the use of the docker cache')
     parser.add_argument(
