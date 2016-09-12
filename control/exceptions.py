@@ -18,6 +18,14 @@ class InvalidControlfile(ControlException):
     The Controlfile does not conform to the requirements.
     Either, it is not valid json, or you didn't specify an image name to use.
     """
+    def __init__(self, controlfile, error):
+        super(InvalidControlfile, self).__init__()
+        self.controlfile = controlfile
+        self.error = error
+
+    def __str__(self):
+        return '''Malformed controlfile {}: {}'''.format(self.controlfile,
+                                                         self.error)
 
 
 # Container Exceptions
