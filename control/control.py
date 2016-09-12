@@ -18,6 +18,7 @@ import sys
 from os.path import abspath, dirname, exists, join, split
 
 from control.cli_args import build_parser
+from control.exceptions import InvalidControlfile
 from control.controlfile import Controlfile
 from control.dclient import dclient
 from control.functions import function_dispatch
@@ -61,8 +62,11 @@ def main(args):
         ctrlfile_location = join(dirname(s[0]), s[1])
     module_logger.debug('controlfile location: %s', ctrlfile_location)
     try:
-        ctrl = Controlfile(ctrlfile_location)
+        ctrl = Controlfile(ctrlfile_location, options.as_me)
     except FileNotFoundError as error:
+        module_logger.critical(error)
+        sys.exit(2)
+    except InvalidControlfile as error:
         module_logger.critical(error)
         sys.exit(2)
 
