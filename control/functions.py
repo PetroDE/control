@@ -271,16 +271,19 @@ def start(args, ctrl):
             container = CreatedContainer(service['name'], service)
         except ContainerDoesNotExist:
             pass  # This will probably be the majority case
-        print('Starting {}'.format(service['name']))
-        try:
-            container = container.create()
-            container.start()
-        except ContainerException as e:
-            module_logger.debug('outer start containerexception caught')
-            module_logger.critical(e)
-        except ImageNotFound as e:
-            module_logger.critical(e)
-            no_err = False
+        if options.dump:
+            print(container.service.dump_run())
+        else:
+            print('Starting {}'.format(service['name']))
+            try:
+                container = container.create()
+                container.start()
+            except ContainerException as e:
+                module_logger.debug('outer start containerexception caught')
+                module_logger.critical(e)
+            except ImageNotFound as e:
+                module_logger.critical(e)
+                no_err = False
     return no_err
 
 
@@ -293,17 +296,17 @@ def stop(args, ctrl):
         try:
             container = CreatedContainer(service['name'], service)
             if options.force:
-                print('Killing {}'.format(service['name']))
+                module_logger.info('Killing %s', service['name'])
                 container.kill()
             else:
-                print('Stopping {}'.format(service['name']))
+                module_logger.info('Stopping %s', service['name'])
                 container.stop()
-            print('Removing {}'.format(service['name']))
+            module_logger.info('Removing %s', service['name'])
             container.remove()
             if options.wipe:
                 container.remove_volumes()
         except ContainerDoesNotExist:
-            print('{} does not exist.'.format(service['name']))
+            module_logger.info('%s does not exist.', service['name'])
     return True
 
 
