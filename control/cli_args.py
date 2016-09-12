@@ -75,6 +75,9 @@ def build_parser():
     parser.add_argument(
         '--no-verify', action='store_true', help='do not check the validity '
         'of the registry\'s SSL cert')
+    parser.add_argument(
+        '--as-me', action='store_true', help='start a container, or command in '
+        'a container as your user, rather than as root')
 
     return parser
 

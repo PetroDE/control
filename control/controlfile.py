@@ -2,9 +2,11 @@
 import copy
 import json
 import logging
+import os
 import os.path
 import subprocess
 
+from control.exceptions import InvalidControlfile
 from control.service import MetaService, UniService, BuildService
 
 dn = os.path.dirname
@@ -13,7 +15,8 @@ module_logger = logging.getLogger('control.controlfile')
 operations = {
     'suffix': '{}{}'.format,
     'prefix': '{}{}'.format,
-    'union': lambda x, y: set(x) | set(y)
+    'union': lambda x, y: set(x) | set(y),
+    'replace': lambda x, y: y,
 }
 
 
@@ -48,7 +51,7 @@ class Controlfile:
     and a Metaservice, respectively.
     """
 
-    def __init__(self, controlfile_location):
+    def __init__(self, controlfile_location, force_user=False):
         """
         There's two types of Controlfiles. A multi-service file that
         allows some meta-operations on top of the other kind of
@@ -64,6 +67,8 @@ class Controlfile:
         variables = {
             "CONTROL_DIR": dn(dn(dn(os.path.abspath(__file__)))),
             "CONTROL_PATH": dn(dn(os.path.abspath(__file__))),
+            "UID": os.getuid(),
+            "GID": os.getgid(),
         }
         git = {}
         with subprocess.Popen(['git', 'rev-parse', '--show-toplevel'],
@@ -93,9 +98,37 @@ class Controlfile:
         variables.update(os.environ)
 
         data = self.read_in_file(controlfile_location)
-        if data and 'services' not in data:
+        if data and 'services' not in data and not force_user:
             serv = UniService(data, controlfile_location)
             data = {"services": {serv.service: data}}
+        elif data and 'services' not in data and force_user:
+            serv = UniService(data, controlfile_location)
+            data = {
+                "services": {serv.service: data},
+                "options": {
+                    "volumes": {
+                        "union": [
+                            '/etc/passwd:/etc/passwd:ro',
+                            '/etc/group:/etc/group:ro'
+                        ],
+                    },
+                    "user": {
+                        "replace": "{UID}:{GID}"
+                    },
+                },
+            }
+        elif data and 'services' in data and force_user:
+            if 'options' not in data:
+                data['options'] = {}
+            if 'volumes' not in data['options']:
+                data['options']['volumes'] = {}
+            if 'user' not in data['options']:
+                data['options']['user'] = {}
+            data['options']['volumes']['union'] = data['options']['volumes'].get('union', []) + [
+                '/etc/passwd:/etc/passwd:ro',
+                '/etc/group:/etc/group:ro'
+            ]
+            data['options']['user']['replace'] = "{UID}:{GID}"
         self.logger.debug("variables to substitute in: %s", variables)
         self.create_service(data, 'all', {}, variables, controlfile_location)
 
@@ -104,13 +137,9 @@ class Controlfile:
         try:
             with open(controlfile, 'r') as f:
                 data = json.load(f)
-        except FileNotFoundError as error:
-            raise
-        except json.decoder.JSONDecodeError as error:
-            self.logger.warning("Controlfile %s is malformed: %s", controlfile, error)
-        else:
-            return data
-        return None
+        except ValueError as error:
+            raise InvalidControlfile(controlfile, str(error)) from None
+        return data
 
     @CountCalls
     def create_service(self, data, service_name, options, variables, ctrlfile):
@@ -253,7 +282,11 @@ def normalize_service(service, opers, variables):
             for op, val in ops.items() if op in operations.keys()):
         module_logger.log(11, "service '%s' %sing %s with '%s'.",
                           service.service, op, key, val)
-        service[key] = operations[op](service[key], val)
+        try:
+            service[key] = operations[op](service[key], val)
+        except KeyError as e:
+            module_logger.log(11, "service '%s' missing key '%s'",
+                              service.service, key)
     for key in service.keys():
         try:
             module_logger.debug('now at %s, passing in %i vars', key, len(variables))
@@ -317,15 +350,19 @@ def satisfy_nested_options(outer, inner):
                 for x in inner.get(key, {}).get('union', [])]
             if inner_union != []:
                 val['union'] = set(inner_union) | set(outer.get(key, {}).get('union', []))
-        if 'suffix' in ops:
+        elif 'suffix' in ops:
             suffix = operations['suffix'](inner.get(key, {}).get('suffix', ''),
                                           outer.get(key, {}).get('suffix', ''))
             if suffix != '':
                 val['suffix'] = suffix
-        if 'prefix' in ops:
+        elif 'prefix' in ops:
             prefix = operations['prefix'](inner.get(key, {}).get('prefix', ''),
                                           outer.get(key, {}).get('prefix', ''))
             if prefix != '':
                 val['prefix'] = prefix
+        elif 'replace' in ops:
+            replace = operations['replace']('', inner.get(key, {}).get('replace'))
+            if replace != '':
+                val['replace'] = replace
         merged[key] = val
     return merged
