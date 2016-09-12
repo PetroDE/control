@@ -15,6 +15,7 @@ Things that are needed:
 import logging
 import signal
 import sys
+from os.path import abspath, dirname, exists, join, split
 
 from control.cli_args import build_parser
 from control.controlfile import Controlfile
@@ -54,7 +55,11 @@ def main(args):
     module_logger.debug("switching to debug logging")
 
     # Read in a Controlfile if one exists
-    ctrlfile_location = options.controlfile
+    ctrlfile_location = abspath(options.controlfile)
+    while dirname(ctrlfile_location) != '/' and not exists(ctrlfile_location):
+        s = split(ctrlfile_location)
+        ctrlfile_location = join(dirname(s[0]), s[1])
+    module_logger.debug('controlfile location: %s', ctrlfile_location)
     try:
         ctrl = Controlfile(ctrlfile_location)
     except FileNotFoundError as error:
