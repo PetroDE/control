@@ -268,7 +268,7 @@ class UniService(Service):
     def dump_run(self, pretty=True):
         """dump out a CLI version of how this container would be started"""
         rep = builder('run', pretty=pretty).image(self.image) \
-                .volume(self.volumes) \
+                .volume(sorted(self.volumes)) \
                 .env_file(self.env_file)
         for k, v in self.container.items():
             rep = {
