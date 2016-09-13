@@ -260,7 +260,7 @@ class UniService(Service):
             .path(dirname(self.controlfile)) \
             .file(self.dockerfile['prod'] if prod else self.dockerfile['dev']) \
             .pull(options.pull) \
-            .rm(options.rm) \
+            .rm(options.no_rm) \
             .force_rm(options.force) \
             .no_cache(not options.cache)
         return rep

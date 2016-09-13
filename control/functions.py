@@ -169,12 +169,15 @@ def build(args, ctrl):  # TODO: DRY it up
                     'dockerfile': tmpfile.name,
                 }
                 module_logger.debug('docker build args: %s', build_args)
-                for line in (json.loads(
-                        l.decode('utf-8').strip())
-                             for l in dclient.build(**build_args)):
-                    print_formatted(line)
-                    if 'error' in line.keys():
-                        return False
+                if options.dump:
+                    print(service.dump_build().pull(pulling(upstream)))
+                else:
+                    for line in (json.loads(
+                            l.decode('utf-8').strip())
+                                 for l in dclient.build(**build_args)):
+                        print_formatted(line)
+                        if 'error' in line.keys():
+                            return False
 
         if not run_event('postbuild', 'dev', service):
             print('{}: Your environment may not have been cleaned up'.format(name))
