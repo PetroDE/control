@@ -55,10 +55,10 @@ def build_parser():
         '--dump', action='store_true', help='dump out the docker command that '
         'will perform the operation that this command would')
     parser.add_argument(
-        '--cache', action='store_false',
+        '--cache', action='store_true',
         help='allow the use of the docker cache')
     parser.add_argument(
-        '--no-cache', action='store_true', dest='cache',
+        '--no-cache', action='store_false', dest='cache',
         help='do not use the cache')
     parser.add_argument(
         '--pull', action='store_const', const=True, dest='pull', help='pull '

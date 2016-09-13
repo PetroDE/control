@@ -112,6 +112,8 @@ def run_event(event, env, service):
 
 def build(args, ctrl):  # TODO: DRY it up
     """build a development image"""
+    if args.cache is None:
+        args.cache = True
     module_logger.debug('running docker build')
     print('building services: {}'.format(", ".join(sorted(args.services))))
 
@@ -163,7 +165,7 @@ def build(args, ctrl):  # TODO: DRY it up
                 build_args = {
                     'path': os.path.dirname(service['dockerfile']['dev']),
                     'tag': service['image'],
-                    'nocache': args.no_cache,
+                    'nocache': not args.cache,
                     'rm': args.no_rm,
                     'pull': False,
                     'dockerfile': tmpfile.name,
@@ -188,6 +190,8 @@ def build_prod(args, ctrl):
     """Build an image that has everything in it for production"""
     if args.pull is None:
         args.pull = True
+    if args.cache is None:
+        args.cache = False
     if args.debug or args.dry_run:
         print('running production build')
 
@@ -232,7 +236,7 @@ def build_prod(args, ctrl):
                 build_args = {
                     'path': os.path.dirname(service['dockerfile']['prod']),
                     'tag': service['image'],
-                    'nocache': args.no_cache,
+                    'nocache': not args.cache,
                     'rm': args.no_rm,
                     'pull': False,
                     'dockerfile': tmpfile.name,
