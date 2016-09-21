@@ -13,19 +13,23 @@ class TestNestedOptions(unittest.TestCase):
 
     def setUp(self):
         self.outer_options = {
+            "image": {"replace": "outer"},
             "name": {"suffix": ".outer"},
             "env": {"prefix": "OUTER_"},
             "dns_search": {
                 "suffix": ".outer",
                 "union": ["outer"],
             },
-            "volumes": {"union": ["logdir:/var/log"]}
+            "volumes": {"union": ["logdir:/var/log"]},
+            "user": {"replace": "outer"}
         }
         self.inner_options = {
+            "image": {"replace": "inner"},
             "name": {"suffix": ".inner"},
             "hostname": {"suffix": ".inner"},
             "env": {"prefix": "INNER_"},
-            "dns_search": {"union": ["inner"]}
+            "dns_search": {"union": ["inner"]},
+            "working_dir": {"replace": "inner"}
         }
 
     def test_suffix(self):
@@ -78,3 +82,24 @@ class TestNestedOptions(unittest.TestCase):
         self.assertEqual(
             set(ret['dns_search']['union']),
             set(['outer', 'inner.outer']))
+
+    def test_replace(self):
+        """Make sure that the outer value replaces the inner value"""
+        ret = satisfy_nested_options(
+            self.outer_options,
+            self.inner_options)
+        self.assertEqual(
+            self.outer_options['image']['replace'],
+            "outer")
+        self.assertEqual(
+            self.inner_options['image']['replace'],
+            "inner")
+        self.assertEqual(
+            ret['image']['replace'],
+            "outer")
+        self.assertEqual(
+            ret['user']['replace'],
+            "outer")
+        self.assertEqual(
+            ret['working_dir']['replace'],
+            "inner")
