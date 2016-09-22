@@ -328,15 +328,14 @@ def satisfy_nested_options(outer, inner):
         val = {}
         # apply outer suffix and prefix to the inner union
         if 'union' in ops:
-            inner_union = [
-                operations['prefix'](
-                    operations['suffix'](
-                        x,
-                        outer.get(key, {}).get('suffix', '')),
-                    outer.get(key, {}).get('prefix', ''))
-                for x in inner.get(key, {}).get('union', [])]
-            if inner_union != []:
-                val['union'] = set(inner_union) | set(outer.get(key, {}).get('union', []))
+            # inner_union = [operations['prefix'](operations['suffix'](x, outer.get(key, {}).get('suffix', '')),
+            #                                     outer.get(key, {}).get('prefix', ''))
+            #                for x in inner.get(key, {}).get('union', [])]
+            # if inner_union != []:
+            #     val['union'] = set(outer.get(key, {}).get('union', [])) | set(inner.get(key, {}).get('union', []))
+            union = set(outer.get(key, {}).get('union', [])) | set(inner.get(key, {}).get('union', []))
+            if union:
+                val['union'] = union
         elif 'suffix' in ops:
             suffix = operations['suffix'](inner.get(key, {}).get('suffix', ''),
                                           outer.get(key, {}).get('suffix', ''))
