@@ -13,8 +13,8 @@ dn = os.path.dirname
 module_logger = logging.getLogger('control.controlfile')
 
 operations = {
-    'suffix': '{}{}'.format,
-    'prefix': '{}{}'.format,
+    'suffix': '{0}{1}'.format,
+    'prefix': '{1}{0}'.format,
     'union': lambda x, y: set(x) | set(y),
     'replace': lambda x, y: y,
 }
@@ -247,19 +247,6 @@ class Controlfile:
         })
 
 
-def open_servicefile(service, location):
-    """
-    Read in a service from a Controlfile that defines only a single service
-    This function does not catch exceptions. It is the caller's
-    responsibility to catch FileNotFoundError and JSONDecoderError.
-    """
-    with open(location, 'r') as controlfile:
-        data = json.load(controlfile)
-    data['service'] = service
-    serv = UniService(data, location)
-    return serv
-
-
 # TODO: eventually the global options will go away, switch this back to options then
 def normalize_service(service, opers, variables):
     """
@@ -361,7 +348,8 @@ def satisfy_nested_options(outer, inner):
             if prefix != '':
                 val['prefix'] = prefix
         elif 'replace' in ops:
-            replace = operations['replace']('', inner.get(key, {}).get('replace'))
+            temp_ = outer.get(key, {}).get('replace', None)
+            replace = operations['replace']('', temp_ if temp_ else inner.get(key).get('replace'))
             if replace != '':
                 val['replace'] = replace
         merged[key] = val
