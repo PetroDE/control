@@ -1,13 +1,11 @@
-#!/usr/bin/env python3
 """Test Controlfile discovery and normalization"""
 
 import json
-import os
 from os.path import join
 import tempfile
 import unittest
 
-from control.controlfile import Controlfile
+from control.controlfile import Controlfile, satisfy_nested_options
 
 
 class TestServicefile(unittest.TestCase):
@@ -124,108 +122,133 @@ class TestGeneratingServiceList(unittest.TestCase):
             ctrlfile.services['required'])
 
 
-class TestIncludingControlfiles(unittest.TestCase):
-    """Make sure that controlfiles to a service are read in correctly"""
-    def setUp(self):
-        self.temp_dir = tempfile.TemporaryDirectory()
-        self.controlfile = join(self.temp_dir.name, 'Controlfile')
-        self.testfile = join(self.temp_dir.name, 'test', 'Controlfile')
-        self.conf = {
+class TestNestedMetaServices(unittest.TestCase):
+    """
+    Provide test coverage for option 2 of create_service, where a metaservice
+    contains the definitions of more services. Make sure that calls to
+    satisfy_nested_options are made correctly.
+    """
+
+    def test_suffix(self):
+        """Make sure that suffixing works for strings and lists"""
+        temp_dir = tempfile.TemporaryDirectory()
+        controlfile = join(temp_dir.name, 'Controlfile')
+        conf = {
             "services": {
-                "test": {
-                    "controlfile": "test/Controlfile"
+                "testmeta": {
+                    "services": {
+                        "test": {
+                            "image": "busybox",
+                            "container": {
+                                "name": "test"
+                            }
+                        }
+                    }
                 }
+            },
+            "options": {
+                "name": {"suffix": ".{FOO}"}
+            },
+            "vars": {
+                "FOO": "example"
             }
         }
-        self.service_conf = {
-            "image": "busybox",
-            "container": {
-                "name": "example",
-                "hostname": "example",
-                "volumes": ["namevolume:/var/log"],
-                "dns_search": ["example"]
+        with open(controlfile, 'w') as f:
+            f.write(json.dumps(conf))
+        ctrlfile = Controlfile(controlfile)
+        self.assertEqual(ctrlfile.services['test']['name'],
+                         'test.example')
+
+    def test_prefix(self):
+        """Make sure that prefixing works for strings and lists"""
+        temp_dir = tempfile.TemporaryDirectory()
+        controlfile = join(temp_dir.name, 'Controlfile')
+        conf = {
+            "services": {
+                "testmeta": {
+                    "services": {
+                        "test": {
+                            "image": "busybox",
+                            "container": {
+                                "name": "test"
+                            }
+                        }
+                    }
+                }
+            },
+            "options": {
+                "image": {"prefix": "registry.example.com/"},
+                "name": {"prefix": "{FOO}."}
+            },
+            "vars": {
+                "FOO": "example"
             }
         }
-        with open(self.controlfile, 'w') as f:
-            f.write(json.dumps(self.conf))
-        os.mkdir(join(self.temp_dir.name, 'test'))
-        with open(self.testfile, 'w') as f:
-            f.write(json.dumps(self.service_conf))
-        # self.service_conf.update({"service": "test", "controlfile": "test/Controlfile"})
+        with open(controlfile, 'w') as f:
+            f.write(json.dumps(conf))
+        ctrlfile = Controlfile(controlfile)
+        self.assertEqual(ctrlfile.services['test'].image,
+                         'registry.example.com/busybox')
+        self.assertEqual(ctrlfile.services['test']['name'],
+                         'example.test')
 
-    def tearDown(self):
-        self.temp_dir.cleanup()
-
-    def test_including_controlfiles(self):
-        """
-        Make sure that single level Controlfile inclusion works correctly,
-        it also checks if relative path includes are correctly dereferenced
-        from the Controlfile location.
-        """
-        # TODO: this test is failing because of a bug, not because you're an idiot
-        ctrlfile = Controlfile(self.controlfile)
-        self.assertEqual(ctrlfile.services['test'].volumes,
-                         self.service_conf['volumes'])
-        self.assertEqual(
-            ctrlfile.get_list_of_services(),
-            frozenset(['test']))
-
-    @unittest.skip("Not Implemented")
-    def test_updated_relative_paths(self):
-        """
-        Volumes and controlfile references need to be updated when Controlfiles
-        are discovered and read in
-        """
-        # TODO: test this stuff
-
-
-class TestDeeplyNestedControlfiles(unittest.TestCase):
-    """
-    Make sure that many recursive inclusions are handled correctly
-    """
-    def setUp(self):
-        self.temp_dir = tempfile.TemporaryDirectory()
-        self.controlfile_location = '{}/Controlfile'.format(self.temp_dir.name)
-        self.conf = {
-            "services": [
-                {
-                    "service": "test",
-                    "controlfile": "test/Controlfile"
+    def test_union(self):
+        """Make sure that prefixing works for strings and lists"""
+        temp_dir = tempfile.TemporaryDirectory()
+        controlfile = join(temp_dir.name, 'Controlfile')
+        conf = {
+            "services": {
+                "testmeta": {
+                    "services": {
+                        "test": {
+                            "image": "busybox",
+                            "container": {
+                                "name": "test",
+                                "volumes": ["vardata:/var/lib/{FOO}"]
+                            }
+                        }
+                    }
                 }
-            ]
-        }
-        self.foo_conf = {
-            "services": [
-                {
-                    "service": "foo",
-                    "controlfile": "foo/Controlfile"
-                }
-            ]
-        }
-        self.service_conf = {
-            "image": "busybox",
-            "container": {
-                "name": "example",
-                "hostname": "example",
-                "volumes": ["namevolume:/var/log"],
-                "dns_search": ["example"]
+            },
+            "options": {
+                "volumes": {"union": ["{FOO}:/home"]}
+            },
+            "vars": {
+                "FOO": "example"
             }
         }
-        with open(self.controlfile_location, 'w') as f:
-            f.write(json.dumps(self.conf))
-        os.mkdir('{}/test'.format(self.temp_dir.name))
-        with open('{}/test/Controlfile'.format(self.temp_dir.name), 'w') as f:
-            f.write(json.dumps(self.foo_conf))
-        os.mkdir('{}/test/foo'.format(self.temp_dir.name))
-        with open('{}/test/foo/Controlfile'.format(self.temp_dir.name), 'w') as f:
-            f.write(json.dumps(self.service_conf))
+        with open(controlfile, 'w') as f:
+            f.write(json.dumps(conf))
+        ctrlfile = Controlfile(controlfile)
+        self.assertEqual(ctrlfile.services['test']['volumes'],
+                         ['example:/home', 'vardata:/var/lib/example'])
 
-    def tearDown(self):
-        self.temp_dir.cleanup()
-
-    @unittest.skip("this test doesn't demonstrate the behaviour I want yet")
-    def test_nested_controlfile(self):
-        """Reference a Controlfile that references other Controlfiles"""
-
-if __name__ == '__main__':
-    unittest.main()
+    def test_replace(self):
+        """Make sure that prefixing works for strings and lists"""
+        temp_dir = tempfile.TemporaryDirectory()
+        controlfile = join(temp_dir.name, 'Controlfile')
+        conf = {
+            "services": {
+                "testmeta": {
+                    "services": {
+                        "test": {
+                            "image": "busybox",
+                            "container": {
+                                "name": "test",
+                            }
+                        }
+                    }
+                }
+            },
+            "options": {
+                "image": {"replace": "registry.{FOO}.com/alpine"}
+            },
+            "vars": {
+                "FOO": "example"
+            }
+        }
+        with open(controlfile, 'w') as f:
+            f.write(json.dumps(conf))
+        ctrlfile = Controlfile(controlfile)
+        self.assertEqual(ctrlfile.services['test'].image,
+                         'registry.example.com/alpine')
