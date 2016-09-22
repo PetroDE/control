@@ -33,22 +33,24 @@ class TestNestedOptions(unittest.TestCase):
         }
 
     def test_suffix(self):
-        """Make sure that appended options are appended in the right order"""
-        ret = satisfy_nested_options(
-            self.outer_options,
-            self.inner_options)
-        self.assertEqual(
-            self.outer_options['name']['suffix'],
-            ".outer")
-        self.assertEqual(
-            self.inner_options['name']['suffix'],
-            ".inner")
+        """
+        Make sure that appended options are appended in the right order:
+        """
+        outer_options = {
+            "name": {"suffix": ".outer"},
+            "dns_search": {"suffix": ".outer"}
+        }
+        inner_options = {
+            "name": {"suffix": ".inner"},
+            "hostname": {"suffix": ".inner"}
+        }
+        ret = satisfy_nested_options(outer_options, inner_options)
         self.assertEqual(
             ret['name']['suffix'],
             ".inner.outer")
         self.assertEqual(
-            set(ret['dns_search']['union']),
-            {"inner.outer", "outer"})
+            ret['dns_search']['suffix'],
+            ".outer")
         self.assertEqual(
             ret['hostname']['suffix'],
             '.inner')
@@ -82,6 +84,9 @@ class TestNestedOptions(unittest.TestCase):
         self.assertEqual(
             set(ret['dns_search']['union']),
             set(['outer', 'inner.outer']))
+        self.assertEqual(
+            ret['volumes']['union'],
+            ['logdir:/var/log'])
 
     def test_replace(self):
         """Make sure that the outer value replaces the inner value"""
@@ -103,3 +108,27 @@ class TestNestedOptions(unittest.TestCase):
         self.assertEqual(
             ret['working_dir']['replace'],
             "inner")
+
+    def test_suffix_union(self):
+        """
+        Make sure that appended options are appended in the right order:
+        """
+        self.outer_options = {
+            "dns_search": {
+                "suffix": ".outer",
+                "union": ["outer"],
+            }
+        }
+        self.inner_options = {
+            "dns_search": {"union": ["inner"]}
+        }
+        ret = satisfy_nested_options(outer_options, inner_options)
+        self.assertEqual(
+            ret['name']['suffix'],
+            ".inner.outer")
+        self.assertEqual(
+            set(ret['dns_search']['union']),
+            {"inner.outer", "outer"})
+        self.assertEqual(
+            ret['hostname']['suffix'],
+            '.inner')
