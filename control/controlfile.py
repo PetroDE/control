@@ -79,21 +79,21 @@ class Controlfile:
                 root_dir, _ = p.communicate()
                 root_dir = root_dir.decode('utf-8').strip()
                 git['GIT_ROOT_DIR'] = root_dir
-                commit_file = '.git/HEAD'
-                with subprocess.Popen(['git', 'symbolic-ref', '-q', 'HEAD'],
+                with subprocess.Popen(['git', 'rev-parse', '--abbrev-ref', 'HEAD'],
                                       stdout=subprocess.PIPE,
                                       stderr=subprocess.PIPE) as q:
                     q.wait()
                     if q.returncode == 0:
-                        ref_path, _ = q.communicate()
-                        ref_path = ref_path.decode('utf-8').strip()
-                        git['GIT_BRANCH'] = os.path.basename(ref_path)
-                        commit_file = os.path.join('.git', ref_path)
-
-                with open(os.path.join(root_dir, commit_file), 'r') as f:
-                    git_commit = f.read().strip()
-                    git['GIT_COMMIT'] = git_commit
-                    git['GIT_SHORT_COMMIT'] = git_commit[:7]
+                        branch, _ = q.communicate()
+                        git['GIT_BRANCH'] = branch.decode('utf-8').strip()
+                with subprocess.Popen(['git', 'rev-parse', 'HEAD'],
+                                      stdout=subprocess.PIPE,
+                                      stderr=subprocess.PIPE) as q:
+                    q.wait()
+                    if q.returncode == 0:
+                        commit, _ = q.communicate()
+                        git['GIT_COMMIT'] = commit.decode('utf-8').strip()
+                        git['GIT_SHORT_COMMIT'] = git['GIT_COMMIT'][:7]
         variables.update(git)
         variables.update(os.environ)
 
