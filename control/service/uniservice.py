@@ -297,6 +297,18 @@ class UniService(Service):
             }[k](v)
         return rep
 
+    def buildable(self):
+        """Check if the service is buildable"""
+        return self.dockerfile['dev'] or self.dockerfile['prod']
+
+    def dev_buildable(self):
+        """Check if the service is buildable in a dev environment"""
+        return self.dockerfile['prod']
+
+    def prod_buildable(self):
+        """Check if the service is buildable in a prod environment"""
+        return self.dockerfile['prod']
+
     def prepare_container_options(self):
         """
         Call this function to dump out a single dict ready to be passed to

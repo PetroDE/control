@@ -122,6 +122,18 @@ def build(args, ctrl):  # TODO: DRY it up
     module_logger.debug(ctrl.services['required'])
 
     for name, service in sorted(((name, ctrl.services[name]) for name in args.services)):
+        if not service.dev_buildable():
+            upstream = Repository.match(service.image)
+            if not pulling(upstream):
+                continue
+            module_logger.info('pulling image %s', service.image)
+            for line in (json.loads(l.decode('utf-8').strip()) for l in dclient.pull(
+                    stream=True,
+                    repository=upstream.get_pull_image_name(),
+                    tag=upstream.tag)):
+                print_formatted(line)
+            continue
+
         print('building {}'.format(name))
         module_logger.debug(type(service))
         module_logger.debug(service.__dict__)
@@ -195,7 +207,7 @@ def build_prod(args, ctrl):
     if args.debug or args.dry_run:
         print('running production build')
 
-    for name, service in sorted(((name, ctrl.services[name]) for name in args.services)):
+    for name, service in sorted(((name, ctrl.services[name]) for name in args.services if ctrl.services[name].prod_buildable())):
         print('building {}'.format(name))
 
         if not run_event('prebuild', 'prod', service):
