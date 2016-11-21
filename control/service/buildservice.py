@@ -113,6 +113,18 @@ class BuildService(Service):
                 if key in self.service_options):
             self.__dict__[key] = val
 
+    def buildable(self):
+        """Check if the service is buildable"""
+        return self.dockerfile['dev'] or self.dockerfile['prod']
+
+    def dev_buildable(self):
+        """Check if the service is buildable in a dev environment"""
+        return self.dockerfile['prod']
+
+    def prod_buildable(self):
+        """Check if the service is buildable in a prod environment"""
+        return self.dockerfile['prod']
+
     def keys(self):
         """
         Return a list of all the "keys" that make up this "service".
