@@ -3,27 +3,29 @@ Make sure that a service object is aliasing container and host_config
 correctly
 """
 
+from copy import deepcopy
 import os
 from os.path import join
 import tempfile
 import unittest
 
 from control.exceptions import InvalidControlfile
-from control.service import UniService
+from control.service import Startable, Buildable, BSService
+from control.service.service import ImageService, Service
 
 
-class TestCreatingUniService(unittest.TestCase):
+class TestCreatingServices(unittest.TestCase):
     """Test the Service class constructor"""
 
     def test_missing_image(self):
         """
-        Make sure that a UniService missing an image is classified as
+        Make sure that a Startable missing an image is classified as
         incorrect.
         """
         serv = {}
         cntrlfile = "./Controlfile"
         with self.assertRaises(InvalidControlfile):
-            UniService(serv, cntrlfile)
+            Startable(serv, cntrlfile)
 
         serv = {
             "container": {
@@ -32,7 +34,7 @@ class TestCreatingUniService(unittest.TestCase):
         }
         cntrlfile = "./Controlfile"
         with self.assertRaises(InvalidControlfile):
-            UniService(serv, cntrlfile)
+            Startable(serv, cntrlfile)
 
     def test_build_only(self):
         """
@@ -40,28 +42,15 @@ class TestCreatingUniService(unittest.TestCase):
         of the image tha control should build is handled corrcetly.
         """
         # TODO: Move this into the controlfile test file
-        serv = {"image": "test:latest"}
+        serv = {"image": "test:latest", "service": "server"}
         cntrlfile = "./Controlfile"
-        result = UniService(serv, cntrlfile)
-        self.assertEqual(
-            result.image,
-            "test:latest")
-        self.assertEqual(
-            result.service,
-            "test")
-        self.assertEqual(result.container, {})
-        self.assertEqual(result.host_config, {})
-
-        serv['service'] = "server"
-        result = UniService(serv, cntrlfile)
+        result = Buildable(deepcopy(serv), cntrlfile)
         self.assertEqual(
             result.image,
             "test:latest")
         self.assertEqual(
             result.service,
             "server")
-        self.assertEqual(result.container, {})
-        self.assertEqual(result.host_config, {})
 
     def test_basic_runnable(self):
         """
@@ -74,7 +63,7 @@ class TestCreatingUniService(unittest.TestCase):
             }
         }
         cntrlfile = "./Controlfile"
-        result = UniService(serv, cntrlfile)
+        result = Startable(deepcopy(serv), cntrlfile)
         self.assertEqual(result.image, "busybox")
         self.assertEqual(result.service, "test")
         self.assertEqual(
@@ -86,7 +75,7 @@ class TestCreatingUniService(unittest.TestCase):
         self.assertEqual(result.host_config, {})
 
         serv['service'] = "server"
-        result = UniService(serv, cntrlfile)
+        result = Startable(deepcopy(serv), cntrlfile)
         self.assertEqual(
             result.image,
             "busybox")
@@ -116,7 +105,7 @@ class TestCreatingUniService(unittest.TestCase):
             }
         }
         cntrlfile = "./Controlfile"
-        result = UniService(serv, cntrlfile)
+        result = Startable(serv, cntrlfile)
         self.assertEqual(result.image, "busybox")
         self.assertEqual(result.service, "test")
         self.assertEqual(
@@ -143,7 +132,7 @@ class TestCreatingUniService(unittest.TestCase):
             }
         }
         cntrlfile = "./Controlfile"
-        result = UniService(serv, cntrlfile)
+        result = BSService(deepcopy(serv), cntrlfile)
         self.assertEqual(result.image, "busybox")
         self.assertEqual(result.service, "test")
         self.assertEqual(
@@ -172,7 +161,7 @@ class TestCreatingUniService(unittest.TestCase):
             "image": "fromline-test",
         }
         cntrlfile = "./Controlfile"
-        result = UniService(serv, cntrlfile)
+        result = Buildable(serv, cntrlfile)
         self.assertEqual(result.fromline['dev'], "")
         self.assertEqual(result.fromline['prod'], "")
 
@@ -181,7 +170,7 @@ class TestCreatingUniService(unittest.TestCase):
             "fromline": "alpine:latest",
         }
         cntrlfile = "./Controlfile"
-        result = UniService(serv, cntrlfile)
+        result = Buildable(serv, cntrlfile)
         self.assertEqual(result.fromline['dev'], "alpine:latest")
         self.assertEqual(result.fromline['prod'], "alpine:latest")
 
@@ -193,7 +182,7 @@ class TestCreatingUniService(unittest.TestCase):
             }
         }
         cntrlfile = "./Controlfile"
-        result = UniService(serv, cntrlfile)
+        result = Buildable(serv, cntrlfile)
         self.assertEqual(result.fromline['dev'], "alpine:latest")
         self.assertEqual(result.fromline['prod'], "alpine:stable")
 
@@ -204,7 +193,7 @@ class TestCreatingUniService(unittest.TestCase):
             }
         }
         cntrlfile = "./Controlfile"
-        result = UniService(serv, cntrlfile)
+        result = Buildable(serv, cntrlfile)
         self.assertEqual(result.fromline['dev'], "")
         self.assertEqual(result.fromline['prod'], "alpine:stable")
 
@@ -218,7 +207,7 @@ class TestCreatingUniService(unittest.TestCase):
             "dockerfile": ""
         }
         cntrlfile = "./Controlfile"
-        result = UniService(serv, cntrlfile)
+        result = Buildable(serv, cntrlfile)
         self.assertEqual(result.dockerfile['dev'], '')
         self.assertEqual(result.dockerfile['prod'], '')
 
@@ -234,11 +223,11 @@ class TestCreatingUniService(unittest.TestCase):
             }
         }
         cntrlfile = "./Controlfile"
-        result = UniService(serv, cntrlfile)
+        result = Buildable(serv, cntrlfile)
         self.assertEqual(result.dockerfile['dev'], '')
         self.assertEqual(result.dockerfile['prod'], '')
 
-    def test_direct_inclusion(self):
+    def test_setting_controlfile(self):
         """Test that the controlfile is set correctly"""
         serv = {
             "image": "busybox",
@@ -247,30 +236,16 @@ class TestCreatingUniService(unittest.TestCase):
             }
         }
         cntrlfile = "./Controlfile"
-        result = UniService(serv, cntrlfile)
+        result = Service(deepcopy(serv), cntrlfile)
         self.assertEqual(result.controlfile, "./Controlfile")
-
-    def test_indirect_inclusion(self):
-        """
-        The Controlfile passed into the Service constructor will always be the
-        place the service was discovered in, but a discovered service can
-        point to a Controlfile that will fill out the configuration of this
-        service.
-        The controlfile member should always be the most complete description
-        of the service. If we track this accurately we can guess that the
-        directory the Controlfile lives in is also the place where the image
-        should be built from. This test makes sure we track it correctly.
-        """
-        serv = {
-            "image": "busybox",
-            "controlfile": "inclusion/Controlfile",
-            "container": {
-                "name": "test"
-            }
-        }
-        cntrlfile = "./Controlfile"
-        result = UniService(serv, cntrlfile)
-        self.assertEqual(result.controlfile, "inclusion/Controlfile")
+        result = ImageService(deepcopy(serv), cntrlfile)
+        self.assertEqual(result.controlfile, "./Controlfile")
+        result = Startable(deepcopy(serv), cntrlfile)
+        self.assertEqual(result.controlfile, "./Controlfile")
+        result = Buildable(deepcopy(serv), cntrlfile)
+        self.assertEqual(result.controlfile, "./Controlfile")
+        result = BSService(deepcopy(serv), cntrlfile)
+        self.assertEqual(result.controlfile, "./Controlfile")
 
 
 class TestContainerOptions(unittest.TestCase):
@@ -324,7 +299,7 @@ class TestContainerOptions(unittest.TestCase):
         Throw the beans at the thing and make sure that everything makes its
         way into the right spot
         """
-        result = UniService(self.serv, self.cntrlfile)
+        result = BSService(deepcopy(self.serv), self.cntrlfile)
 
         self.assertEqual(result.service, "server")
         self.assertEqual(result.image, "busybox")
@@ -382,7 +357,7 @@ class TestContainerOptions(unittest.TestCase):
 
     def test_generate_container(self):
         """make sure that the create_container config is as expected"""
-        result = UniService(self.serv, self.cntrlfile)
+        result = BSService(deepcopy(self.serv), self.cntrlfile)
         js = result.prepare_container_options()
         self.assertEqual(js['volumes'],
                          ["/etc", "/var/lib", "/var/tmp"])
@@ -413,7 +388,7 @@ class TestEnvFile(unittest.TestCase):
             }
         }
         cntrlfile = "./Controlfile"
-        result = UniService(serv, cntrlfile)
+        result = Startable(serv, cntrlfile)
         js = result.prepare_container_options()
         self.assertEqual(js['environment'], {"FOO": "bar"})
         temp_dir.cleanup()
@@ -441,7 +416,7 @@ class TestEnvFile(unittest.TestCase):
             }
         }
         cntrlfile = "./Controlfile"
-        result = UniService(serv, cntrlfile)
+        result = Startable(serv, cntrlfile)
         js = result.prepare_container_options()
         self.assertEqual(
             js['environment'],
@@ -470,13 +445,13 @@ class TestEnvFile(unittest.TestCase):
             }
         }
         cntrlfile = "./Controlfile"
-        result = UniService(serv, cntrlfile)
+        result = Startable(serv, cntrlfile)
         with self.assertLogs(result.logger, level='WARNING') as cm:
             result.prepare_container_options()
         self.assertEqual(
             cm.output,
             [
-                'WARNING:control.service.UniService:'
+                'WARNING:control.service.Startable:'
                 'Env file is missing: {}'.format(join(temp_dir.name, 'envfile'))
             ]
         )

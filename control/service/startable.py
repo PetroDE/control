@@ -1,35 +1,24 @@
 """
-A little bit of trickery to enable single depth indexing of all values of a
-service.
+Define a startable service
 """
 
-import logging
-from os.path import abspath, dirname, isfile, join
 from copy import deepcopy
+import logging
+from os.path import isfile
 
 from docker.utils import create_host_config, parse_env_file
 from docker.api import ContainerApiMixin
 
 from control.cli_builder import builder
 from control.dclient import dclient
-from control.exceptions import InvalidControlfile
-from control.options import options
 from control.repository import Repository
-from control.service.service import Service
+from control.service.service import ImageService
 
-module_logger = logging.getLogger('control.service')
+module_logger = logging.getLogger('control.service.startable')
 
 
-class UniService(Service):
+class Startable(ImageService):
     """
-    Service is a bit of an odd bird. It started as just a dict that held the
-    configuration for a container, and anything that needed to modify it would
-    simply put its data where it needed to go. This spread too much management
-    code all over Control.
-
-    Service holds some information that Control needs to manage a
-    container/image pair. These are accessible as attributes.
-
     Anything that defines the container configuration (that docker needs to
     know about) is split across two dicts (because Docker is so good at being
     a magical box that you throw a configuration at and end up with a container
@@ -49,10 +38,6 @@ class UniService(Service):
     flags as your parameter names, you don't get bitten. Yeah. I'm being
     really nice to you. Unlike those jerks at Docker.
 
-    Oh. One other thing. The attributes can also be accessed by subscript.
-    Forcing you to remember which were Control internal, and what are just
-    passed through to Docker didn't sit well with me.
-
     Attributes:
     - service
     - services: used to keep track of this metaservice's services
@@ -68,21 +53,9 @@ class UniService(Service):
 
     service_options = {
         'commands',
-        'container',
-        'controlfile',
-        'dockerfile',
         'env_file',
-        'events',
-        'expected_timeout',
-        'fromline',
-        'host_config',
-        'image',
-        'open',
-        'required',
-        'service',
-        'services',
         'volumes',
-    }
+    } | ImageService.service_options
 
     host_config_options = (
         set(create_host_config.__code__.co_varnames) -
@@ -129,141 +102,85 @@ class UniService(Service):
         "dns_search": [],
         "volumes_from": [],
         "devices": [],
-        "command": [],
         "ports": [],
         "environment": [],
         "entrypoint": [],
     }
 
     def __init__(self, service, controlfile):
-        self.logger = logging.getLogger('control.service.UniService')
-        self.dockerfile = {'dev': '', 'prod': ''}
-        self.fromline = {'dev': '', 'prod': ''}
-        self.commands = {}
+        super().__init__(service, controlfile)
+        self.logger = logging.getLogger('control.service.Startable')
         self.container = {}
         self.host_config = {}
-        self.events = {}
-        self.expected_timeout = 10
-        self.env_file = ''
         self.volumes = []
 
-        serv = deepcopy(service)
-        Service.__init__(self, serv)
-
-        # This is the one thing you actually have to have defined in a
-        # Controlfile
-        # Because later we normalize options, we don't create the Repository
-        # object here, we just read in the string
-        try:
-            self.image = serv.pop('image')
-        except KeyError:
-            self.logger.critical('%s missing image', controlfile)
-            raise InvalidControlfile(controlfile, 'missing image')
-
         # We're going to hold onto this until we're ready to iterate over it
-        container_config = serv.pop('container', {})
+        container_config = service.pop('container', {})
 
         # Handle the things that we have special requirements to handle
-        # Set the service name
         service_empty = self.service == ""
         if service_empty and 'name' in container_config:
             self.service = container_config['name']
         elif service_empty:
             self.service = Repository.match(self.image).image
 
-        # Record the controlfile that this service came from
-        self.controlfile = serv.pop('controlfile', controlfile)
-
+        env = list({'envfile', 'env_file'} & set(container_config.keys()))
+        if len(env) > 0:
+            self.env_file = container_config.pop(env[0])
+        else:
+            self.env_file = ''
         try:
-            dkrfile = serv.pop('dockerfile')
-            if isinstance(dkrfile, dict):
-                self.dockerfile = {
-                    'dev': abspath(join(dirname(self.controlfile),
-                                        dkrfile['dev'])),
-                    'prod': abspath(join(dirname(self.controlfile),
-                                         dkrfile['prod'])),
-                }
-            elif dkrfile == "":
-                # TODO: this is a hack to enable control to start multiple
-                # containers from the same image without building that image
-                # each time
-                self.dockerfile = {'dev': "", 'prod': ""}
-            else:
-                self.dockerfile = {
-                    'dev': abspath(join(dirname(self.controlfile), dkrfile)),
-                    'prod': abspath(join(dirname(self.controlfile), dkrfile)),
-                }
-            self.logger.debug('setting dockerfile %s', self.dockerfile)
-        except KeyError as e:
-            # Guess that there's a Dockerfile next to the Controlfile
-            dkrfile = join(abspath(dirname(self.controlfile)), 'Dockerfile')
-            devfile = join(dkrfile, '.dev')
-            prdfile = join(dkrfile, '.prod')
-            self.dockerfile['dev'], self.dockerfile['prod'] = {
-                # devProdAreEmpty, DockerfileExists, DevProdExists
-                (True, True, False): lambda f, d, p: (f, f),
-                (True, False, True): lambda f, d, p: (d, p),
-                (True, False, False): lambda f, d, p: ('', ''),
-                # This list is sparsely populated because these are the
-                # only conditions that mean the values need to be guessed
-            }[(
-                not self.dockerfile['dev'] and not self.dockerfile['prod'],
-                isfile(dkrfile),
-                isfile(devfile) and isfile(prdfile)
-            )](dkrfile, devfile, prdfile)
-            self.logger.debug('setting dockerfile with fallback: %s', self.dockerfile)
-
-        if 'fromline' in serv:
-            fline = serv.pop('fromline')
-            if isinstance(fline, dict):
-                self.fromline = {
-                    'dev': fline.get('dev', ''),
-                    'prod': fline.get('prod', '')
-                }
-            else:
-                self.fromline = {
-                    'dev': fline,
-                    'prod': fline
-                }
-
-        # The rest of the options can be straight assigned
-        for key, val in (
-                (key, val)
-                for key, val in serv.items()
-                if key in self.service_options):
-            self.__dict__[key] = val
+            self.commands = service.pop('commands')
+        except KeyError:
+            self.logger.debug('No commands defined')
+        try:
+            self.volumes = container_config.pop('volumes')
+        except KeyError:
+            self.logger.debug('No volumes defined')
 
         # Now we are ready to iterate over the container configuration.
-        # We do this awkward check to make sure that we don't accidentally
-        # do the equivalent of eval'ing a random string that may or may not be
-        # malicious.
         if self.logger.isEnabledFor(logging.DEBUG):
             self.logger.debug(
                 'Accepting these configurations: %s',
-                sorted(x for x in container_config.keys() if x in self.all_options))
+                sorted(x for x in container_config.keys() if x in (
+                    self.container_options |
+                    self.host_config_options |
+                    self.abbreviations.keys()
+                )))
             self.logger.debug(
                 'Throwing out these these options: %s',
-                sorted(x for x in container_config.keys() if x not in self.all_options))
+                sorted(x for x in container_config.keys() if x not in (
+                    self.container_options |
+                    self.host_config_options |
+                    self.abbreviations.keys()
+                )))
+        # This is a dumb way to handle abbreviations, but it works for now
+        for key, val in ((self.abbreviations[x], y)
+                         for x, y in container_config.items()
+                         if x in self.abbreviations.keys()):
+            self.container[key] = val
         for key, val in ((x, y) for x, y in container_config.items() if x in
-                         self.all_options):
-            self[key] = val
+                         self.container_options):
+            self.container[key] = val
+        for key, val in ((x, y) for x, y in container_config.items() if x in
+                         self.host_config_options):
+            self.host_config[key] = val
+
+        # Set the container's name based on guesses
+        if 'name' not in self.container:
+            self.container['name'] = self.service
+            self.logger.debug('setting container name from guess')
+        # Set the container's hostname based on guesses
+        if 'hostname' not in self.container:
+            self.container['hostname'] = self.container['name']
+            self.logger.debug('setting container hostname from guess')
+
         self.logger.debug('service image: %s', self.image)
         self.logger.debug('service container: %s', self.container)
         self.logger.debug('service host_config: %s', self.host_config)
+        self.logger.debug('service volumes: %s', self.volumes)
 
-        self._fill_in_holes()
-
-    def dump_build(self, prod=False, pretty=True):
-        """dump out a CLI version of how this image would be built"""
-        rep = builder('build', pretty=pretty) \
-            .tag(self.image) \
-            .path(dirname(self.controlfile)) \
-            .file(self.dockerfile['prod'] if prod else self.dockerfile['dev']) \
-            .pull(options.pull) \
-            .rm(options.no_rm) \
-            .force_rm(options.force) \
-            .no_cache(not options.cache)
-        return rep
+        self.logger.debug('found Startable %s', self.service)
 
     def dump_run(self, pretty=True):
         """dump out a CLI version of how this container would be started"""
@@ -297,18 +214,6 @@ class UniService(Service):
             }[k](v)
         return rep
 
-    def buildable(self):
-        """Check if the service is buildable"""
-        return self.dockerfile['dev'] or self.dockerfile['prod']
-
-    def dev_buildable(self):
-        """Check if the service is buildable in a dev environment"""
-        return self.dockerfile['prod']
-
-    def prod_buildable(self):
-        """Check if the service is buildable in a prod environment"""
-        return self.dockerfile['prod']
-
     def prepare_container_options(self):
         """
         Call this function to dump out a single dict ready to be passed to
@@ -317,7 +222,7 @@ class UniService(Service):
         # FOR WHEN YOU CAN UPGRADE TO 3.5
         # hc = dclient.create_host_config(**self.host_config)
         # return {**self.container, **hc}
-        self.logger.debug('uniservice using 3.4 version')
+        self.logger.debug('startable using 3.4 version')
         self.container['volumes'], self.host_config['binds'] = _split_volumes(self.volumes)
         self.logger.debug('container: %s', self.container)
         self.logger.debug('host_config: %s', self.host_config)
@@ -350,12 +255,12 @@ class UniService(Service):
         their values.
         """
         # FOR WHEN YOU MOVE TO PYTHON 3.5
-        # return list((self.service_options - {'container', 'host_config'}) |
+        # return list(self.service_options |
         #             {*self.container.keys()} |
-        #             {*self.host_config.keys()} - {'binds'})
-        return list((self.service_options - {'container', 'host_config'}) |
+        #             {*self.host_config.keys()})
+        return list(self.service_options |
                     set(self.container.keys()) |
-                    set(self.host_config.keys()) - {'binds'})
+                    set(self.host_config.keys()))
 
     def __lt__(self, other):
         return (self.service, self.container['name']) < (other.service, other.container['name'])
@@ -367,11 +272,8 @@ class UniService(Service):
         return len(self.container) + len(self.host_config)
 
     def __getitem__(self, key):
-        try:
+        if key in self.abbreviations.keys():
             key = self.abbreviations[key]
-        except KeyError:
-            pass  # We don't really care if you aren't using an abbrev
-            # we just don't want to branch to do this replacement
 
         if key in self.container_options:
             return self.container.get(key, self.defaults.get(key, ''))
@@ -391,11 +293,12 @@ class UniService(Service):
         elif key in self.host_config_options:
             self.host_config[key] = value
         else:
-            raise KeyError
+            raise KeyError(key)
 
     def __delitem__(self, key):
         if key == 'image':
             raise KeyError(key)
+
         if key in self.container.keys():
             del self.container[key]
         elif key in self.host_config.keys():
@@ -404,20 +307,6 @@ class UniService(Service):
             del self.__dict__[key]
         else:
             raise KeyError(key)
-
-    def _fill_in_holes(self):
-        """
-        After we've read in the whole service, we go in and fill in spots that
-        might have been left blank.
-
-        - hostname <= from service name
-        """
-        # Set the container's name based on guesses
-        if len(self.container) > 0 and 'name' not in self.container:
-            self['name'] = self['service']
-        # Set the container's hostname based on guesses
-        if len(self.container) > 0 and 'hostname' not in self.container:
-            self['hostname'] = self['name']
 
 
 def _split_volumes(volumes):
@@ -428,7 +317,7 @@ def _split_volumes(volumes):
     "host_binding:container_mount_point:ro"
 
     create_container(volumes: []) wants the full list of container_mount_points
-    create_host_config(binds: []) wants ONLY the host bindings
+    create_host_config(binds: []) wants ONLY the entries that have host bindings
 
     This is annoying because container_mount_point will be index 0 or 1
     depending on the number of colons in the string.

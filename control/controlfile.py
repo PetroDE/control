@@ -7,7 +7,7 @@ import os.path
 import subprocess
 
 from control.exceptions import InvalidControlfile
-from control.service import MetaService, UniService, BuildService
+from control.service import MetaService, Startable, ImageService, create_service
 
 dn = os.path.dirname
 module_logger = logging.getLogger('control.controlfile')
@@ -61,8 +61,10 @@ class Controlfile:
         """
         self.logger = logging.getLogger('control.controlfile.Controlfile')
         self.services = {
-            "required": MetaService({'service': 'required', 'required': True}),
-            "optional": MetaService({'service': 'optional', 'required': False})
+            "required": MetaService({'service': 'required', 'required': True, 'services': []},
+                                    controlfile_location),
+            "optional": MetaService({'service': 'optional', 'required': False, 'services': []},
+                                    controlfile_location)
         }
         variables = {
             "CONTROL_DIR": dn(dn(dn(os.path.abspath(__file__)))),
@@ -98,38 +100,25 @@ class Controlfile:
         variables.update(os.environ)
 
         data = self.read_in_file(controlfile_location)
-        if data and 'services' not in data and not force_user:
-            serv = UniService(data, controlfile_location)
+        if not data:
+            raise InvalidControlfile(controlfile_location, "empty Controlfile")
+        # Check if this is a single service Controlfile, if it is, wrap in a
+        # metaservice.
+        if 'services' not in data:
+            # Temporarily create a service to take advantage of service name guessing
+            serv = create_service(copy.deepcopy(data), controlfile_location)
             data = {"services": {serv.service: data}}
-        elif data and 'services' not in data and force_user:
-            serv = UniService(data, controlfile_location)
-            data = {
-                "services": {serv.service: data},
-                "options": {
-                    "volumes": {
-                        "union": [
-                            '/etc/passwd:/etc/passwd:ro',
-                            '/etc/group:/etc/group:ro'
-                        ],
-                    },
-                    "user": {
-                        "replace": "{UID}:{GID}"
-                    },
-                },
-            }
-        elif data and 'services' in data and force_user:
+        # Check if we are running --as-me, if we are, make sure that we start
+        # the process with the user's UID and GID
+        if force_user:
             if 'options' not in data:
                 data['options'] = {}
-            if 'volumes' not in data['options']:
-                data['options']['volumes'] = {}
             if 'user' not in data['options']:
                 data['options']['user'] = {}
-            data['options']['volumes']['union'] = data['options']['volumes'].get('union', []) + [
-                '/etc/passwd:/etc/passwd:ro',
-                '/etc/group:/etc/group:ro'
-            ]
             data['options']['user']['replace'] = "{UID}:{GID}"
+
         self.logger.debug("variables to substitute in: %s", variables)
+
         self.create_service(data, 'all', {}, variables, controlfile_location)
 
     def read_in_file(self, controlfile):
@@ -158,18 +147,16 @@ class Controlfile:
             data = self.read_in_file(ctrlfile)
         data['service'] = service_name
 
-        container_not_in_data = 'container' not in data
         services_in_data = 'services' in data
         services_is_list = isinstance(data.get('services', None), list)
-        if services_in_data and services_is_list:
-            self.logger.debug('found pure Metaservice %s', data['service'])
-            metaservice = MetaService(data)
-            metaservice.services = data['services']
-            self.push_service_into_list(metaservice.service, metaservice)
-            return []
-        elif services_in_data:
+        if services_in_data:
+            self.logger.debug('metaservice named %s', service_name)
+            self.logger.debug('services_is_list %s', services_is_list)
+            self.logger.debug(data)
+        # Recursive step
+        if services_in_data and not services_is_list:
             self.logger.debug('found Metaservice %s', data['service'])
-            metaservice = MetaService(data)
+            metaservice = MetaService(data, ctrlfile)
             opers = satisfy_nested_options(outer=options, inner=data.get('options', {}))
             nvars = copy.deepcopy(variables)
             nvars.update(_substitute_vars(data.get('vars', {}), variables))
@@ -182,20 +169,19 @@ class Controlfile:
                                                             ctrlfile)
             self.push_service_into_list(metaservice.service, metaservice)
             return metaservice.services
-        elif container_not_in_data:
-            self.logger.debug('found buildservice %s', data['service'])
-            serv = BuildService(data, ctrlfile)
-            variables['SERVICE'] = serv.service
+        # No more recursing, we have concrete services now
+        try:
+            serv = create_service(data, ctrlfile)
+        except InvalidControlfile as e:
+            self.logger.warning(e)
+            return []
+        variables['SERVICE'] = serv.service
+        if isinstance(serv, ImageService):
             name, service = normalize_service(serv, options, variables)
             self.push_service_into_list(name, service)
             return [name]
-        else:
-            self.logger.debug('found uni %s', data['service'])
-            serv = UniService(data, ctrlfile)
-            variables['SERVICE'] = serv.service
-            name, service = normalize_service(serv, options, variables)
-            self.push_service_into_list(name, service)
-            return [name]
+        self.push_service_into_list(serv.service, serv)
+        return [serv.service]
 
     def push_service_into_list(self, name, service):
         """
@@ -239,10 +225,7 @@ class Controlfile:
             for key in (
                 service.commands.keys()
                 for service in self.services
-                if (
-                        isinstance(service, UniService) or
-                        isinstance(service, BuildService)
-                )
+                if isinstance(service, Startable)
             )
         })
 
@@ -272,8 +255,10 @@ def normalize_service(service, opers, variables):
         try:
             service[key] = operations[op](service[key], val)
         except KeyError as e:
+            module_logger.debug(e)
             module_logger.log(11, "service '%s' missing key '%s'",
                               service.service, key)
+            module_logger.log(11, service.__dict__)
     for key in service.keys():
         try:
             module_logger.debug('now at %s, passing in %i vars', key, len(variables))

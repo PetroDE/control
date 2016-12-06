@@ -58,6 +58,16 @@ class Container:
             self.logger.debug(e.explanation.decode('utf-8'))
             raise
 
+    def image_exists(self):
+        """Check whether the image the container needs exists locally on the host"""
+        try:
+            dclient.inspect_image(self.service.image)
+        except docker.errors.NotFound as e:
+            if 'No such image' in e.explanation.decode('utf-8'):
+                return False
+            raise e
+        return True
+
 
 class CreatedContainer(Container):
     """Handle things you can do to a running container"""

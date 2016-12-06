@@ -100,7 +100,6 @@ class TestGeneratingServiceList(unittest.TestCase):
                 "foo",
                 "bar",
                 "baz",
-                "named",
                 "required",
                 "all",
                 "optional"]))
@@ -220,8 +219,8 @@ class TestNestedMetaServices(unittest.TestCase):
         with open(controlfile, 'w') as f:
             f.write(json.dumps(conf))
         ctrlfile = Controlfile(controlfile)
-        self.assertEqual(ctrlfile.services['test']['volumes'],
-                         ['example:/home', 'vardata:/var/lib/example'])
+        self.assertEqual(set(ctrlfile.services['test']['volumes']),
+                         {'example:/home', 'vardata:/var/lib/example'})
 
     def test_replace(self):
         """Make sure that prefixing works for strings and lists"""

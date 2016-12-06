@@ -5,11 +5,19 @@ from .service import Service
 
 class MetaService(Service):
     """Keep a list of all the services that are included in this metaservice"""
-    def __init__(self, service):
+
+    service_options = Service.service_options | {
+        'services'
+    }
+
+    def __init__(self, service, controlfile):
+        super().__init__(service, controlfile)
         if len(set(service.keys()) & {'required', 'optional'}) == 0:
             service['required'] = False
-        Service.__init__(self, service)
-        self.services = []
+        # Controlfile passes in the data dict for impure metaservices before
+        # it recurses, so this takes the list of it is pure, and defaults to an
+        # empty list if it isn't
+        self.services = service['services'] if isinstance(service['services'], list) else []
         self.append = self.services.append
 
     def __len__(self):

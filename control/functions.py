@@ -18,7 +18,7 @@ from control.exceptions import (ContainerDoesNotExist, ContainerException,
 from control.options import options
 from control.registry import Registry
 from control.repository import Repository
-from control.service import UniService
+from control.service import Startable
 
 
 module_logger = logging.getLogger('control.functions')
@@ -64,6 +64,20 @@ def pulling(repo):
           not options.pull):
         return False
     return True
+
+
+def pull_image(image):
+    """
+    Pulling an image, since this is used in build, build_prod, start
+
+    image should be a Repository.
+    """
+    module_logger.info('pulling image %s', image.repo)
+    for line in (json.loads(l.decode('utf-8').strip()) for l in dclient.pull(
+            stream=True,
+            repository=image.get_pull_image_name(),
+            tag=image.tag)):
+        print_formatted(line)
 
 
 def print_formatted(line):
@@ -126,13 +140,7 @@ def build(args, ctrl):  # TODO: DRY it up
             upstream = Repository.match(service.image)
             if not pulling(upstream):
                 continue
-            module_logger.info('pulling image %s', service.image)
-            for line in (json.loads(l.decode('utf-8').strip()) for l in dclient.pull(
-                    stream=True,
-                    repository=upstream.get_pull_image_name(),
-                    tag=upstream.tag)):
-                print_formatted(line)
-            continue
+            pull_image(upstream)
 
         print('building {}'.format(name))
         module_logger.debug(type(service))
@@ -167,12 +175,7 @@ def build(args, ctrl):  # TODO: DRY it up
             tmpfile.flush()
 
             if pulling(upstream) and image_is_newer(upstream):
-                module_logger.info('pulling upstream %s', upstream)
-                for line in (json.loads(l.decode('utf-8').strip()) for l in dclient.pull(
-                        stream=True,
-                        repository=upstream.get_pull_image_name(),
-                        tag=upstream.tag)):
-                    print_formatted(line)
+                pull_image(upstream)
             if not args.dry_run:
                 build_args = {
                     'path': os.path.dirname(service['dockerfile']['dev']),
@@ -238,13 +241,7 @@ def build_prod(args, ctrl):
 
             if not args.dry_run:
                 if not pulling(upstream):
-                    for line in (
-                            json.loads(l.decode('utf-8').strip())
-                            for l in dclient.pull(
-                                    stream=True,
-                                    repository=upstream.get_pull_image_name(),
-                                    tag=upstream.tag)):
-                        print_formatted(line)
+                    pull_image(upstream)
                 build_args = {
                     'path': os.path.dirname(service['dockerfile']['prod']),
                     'tag': service['image'],
@@ -277,12 +274,16 @@ def start(args, ctrl):
     no_err = True
     for service in sorted((ctrl.services[name]
                            for name in args.services
-                           if isinstance(ctrl.services[name], UniService))):
+                           if isinstance(ctrl.services[name], Startable))):
+
         if options.no_volumes:
             service['volumes'] = []
         container = Container(service)
 
-        # check if image is newer, start again if image is newer
+        upstream = Repository.match(service.image)
+        if not container.image_exists() and not service.buildable() and pulling(upstream):
+            pull_image(upstream)
+
         try:
             # TODO: if a container exists but the options don't match, log out that
             # we are starting a container that does not match the merged controlfile
@@ -311,7 +312,7 @@ def stop(args, ctrl):
     module_logger.debug(", ".join(sorted(args.services)))
     for service in sorted((ctrl.services[name]
                            for name in args.services
-                           if isinstance(ctrl.services[name], UniService))):
+                           if isinstance(ctrl.services[name], Startable))):
         try:
             container = CreatedContainer(service['name'], service)
             if options.force:

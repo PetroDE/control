@@ -6,6 +6,7 @@ import unittest
 import docker
 
 from control.container import Container
+from control.service import create_service
 
 
 class VolumeCreationTests(unittest.TestCase):
@@ -43,11 +44,15 @@ class VolumeCreationTests(unittest.TestCase):
         """
         self.image = 'busybox'
         self.conf = {
-            "name": self.container_name,
-            "hostname": "busybox",
-            "volumes": ["/var"]
+            "image": self.image,
+            "container": {
+                "name": self.container_name,
+                "hostname": "busybox",
+                "volumes": ["/var"]
+            }
         }
-        container = Container(self.image, self.conf).create()
+        serv = create_service(self.conf, './Controlfile')
+        container = Container(serv).create()
         container.start()
         self.assertEqual(len(container.inspect['Mounts']), 1)
         self.assertEqual(len(container.inspect['Mounts'][0]['Name']), 65)
@@ -64,11 +69,15 @@ class VolumeCreationTests(unittest.TestCase):
         self.container_volumes.append(volume_name)
         self.image = 'busybox'
         self.conf = {
-            "name": self.container_name,
-            "hostname": "busybox",
-            "volumes": ["{}:/var".format(volume_name)]
+            "image": self.image,
+            "container": {
+                "name": self.container_name,
+                "hostname": "busybox",
+                "volumes": ["{}:/var".format(volume_name)]
+            }
         }
-        container = Container(self.image, self.conf).create()
+        serv = create_service(self.conf, './Controlfile')
+        container = Container(serv).create()
         container.start()
         self.assertEqual(len(container.inspect['Mounts']), 1)
         self.assertEqual(len(container.inspect['Mounts'][0]['Name']), len(volume_name))
@@ -86,11 +95,15 @@ class VolumeCreationTests(unittest.TestCase):
         temp_dir = tempfile.TemporaryDirectory()
         self.image = 'busybox'
         self.conf = {
-            "name": self.container_name,
-            "hostname": "busybox",
-            "volumes": ["{}:/var".format(temp_dir.name)]
+            "image": self.image,
+            "container": {
+                "name": self.container_name,
+                "hostname": "busybox",
+                "volumes": ["{}:/var".format(temp_dir.name)]
+            }
         }
-        container = Container(self.image, self.conf).create()
+        serv = create_service(self.conf, './Controlfile')
+        container = Container(serv).create()
         container.start()
         self.assertEqual(len(container.inspect['Mounts']), 1)
         self.assertEqual(container.inspect['Mounts'][0]['Destination'], '/var')

@@ -7,11 +7,11 @@ from os.path import abspath, dirname, isfile, join
 from copy import deepcopy
 
 from control.exceptions import InvalidControlfile
-from control.service.service import Service
-from control.service.uniservice import UniService
+from control.repository import Repository
+from control.service.service import ImageService
 
 
-class BuildService(Service):
+class Buildable(ImageService):
     """
     Okay I lied. There are 3 kinds of services. The problem is that there are
     base images that need to be built, but don't know enough to be long running
@@ -21,38 +21,24 @@ class BuildService(Service):
     """
 
     service_options = {
-        'controlfile',
         'dockerfile',
         'events',
         'fromline',
-        'image',
-        'required',
-        'service',
-        'services',
-        'volumes',
-    }
+    } | ImageService.service_options
 
     def __init__(self, service, controlfile):
-        self.logger = logging.getLogger('control.service.BuildService')
+        super().__init__(service, controlfile)
+        self.logger = logging.getLogger('control.service.Buildable')
         self.dockerfile = {'dev': '', 'prod': ''}
         self.fromline = {'dev': '', 'prod': ''}
-        self.commands = {}
-        self.events = {}
-
-        serv = deepcopy(service)
-        Service.__init__(self, serv)
 
         try:
-            self.image = serv.pop('image')
+            self.events = service.pop('events')
         except KeyError:
-            self.logger.critical('%s missing image', controlfile)
-            raise InvalidControlfile(controlfile, 'missing image')
-
-        # Record the controlfile that this service came from
-        self.controlfile = serv.pop('controlfile', controlfile)
+            self.logger.debug('No events defined')
 
         try:
-            dkrfile = serv.pop('dockerfile')
+            dkrfile = service.pop('dockerfile')
             if isinstance(dkrfile, dict):
                 self.dockerfile = {
                     'dev': abspath(join(dirname(self.controlfile),
@@ -93,8 +79,8 @@ class BuildService(Service):
                     self.service,
                     e)
 
-        if 'fromline' in serv:
-            fline = serv.pop('fromline')
+        if 'fromline' in service:
+            fline = service.pop('fromline')
             if isinstance(fline, dict):
                 self.fromline = {
                     'dev': fline.get('dev', ''),
@@ -107,11 +93,31 @@ class BuildService(Service):
                 }
 
         # The rest of the options can be straight assigned
-        for key, val in (
-                (key, val)
-                for key, val in serv.items()
-                if key in self.service_options):
-            self.__dict__[key] = val
+        # for key, val in (
+        #         (key, val)
+        #         for key, val in service.items()
+        #         if key in self.service_options):
+        #     self.logger.debug('buildable assigning key %s value %s', key, val)
+        #     self.__dict__[key] = val
+
+        if not self.service:
+            self.logger.debug('setting service name from guess')
+            self.service = Repository.match(self.image).image
+
+        self.logger.debug('Found Buildable %s', self.service)
+
+    def dump_build(self, prod=False, pretty=True):
+        """dump out a CLI version of how this image would be built"""
+        rep = builder('build', pretty=pretty) \
+            .tag(self.image) \
+            .path(dirname(self.controlfile)) \
+            .file(self.dockerfile['prod'] if prod else self.dockerfile['dev']) \
+            .pull(options.pull) \
+            .rm(options.no_rm) \
+            .force_rm(options.force) \
+            .no_cache(not options.cache)
+        return rep
+
 
     def buildable(self):
         """Check if the service is buildable"""
@@ -124,46 +130,3 @@ class BuildService(Service):
     def prod_buildable(self):
         """Check if the service is buildable in a prod environment"""
         return self.dockerfile['prod']
-
-    def keys(self):
-        """
-        Return a list of all the "keys" that make up this "service".
-
-        This exists because Services act like dicts that are intelligent about
-        their values.
-        """
-        # FOR WHEN YOU MOVE TO PYTHON 3.5
-        # return list((self.service_options - {'container', 'host_config'}) |
-        #             {*self.container.keys()} |
-        #             {*self.host_config.keys()} - {'binds'})
-        return list(self.service_options)
-
-    def __len__(self):
-        return 0
-
-    def __getitem__(self, key):
-        try:
-            key = UniService.abbreviations[key]
-        except KeyError:
-            pass  # We don't really care if you aren't using an abbrev
-            # we just don't want to branch to do this replacement
-
-        if key in self.service_options:
-            return self.__dict__[key]
-        return UniService.defaults.get(key, '')
-
-    def __setitem__(self, key, value):
-        if key in self.service_options:
-            self.__dict__[key] = value
-        elif key in UniService.container_options or key in UniService.host_config_options:
-            pass
-        else:
-            raise KeyError
-
-    def __delitem__(self, key):
-        if key == 'image':
-            raise KeyError(key)
-        elif key in self.service_options:
-            del self.__dict__[key]
-        else:
-            raise KeyError(key)

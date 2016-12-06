@@ -79,6 +79,8 @@ def main(args):
         module_logger.debug('No options specified. Using required service list')
         options.services = ctrl.required_services()
     # Flatten the service list by replacing metaservices with their service lists
+    module_logger.debug(ctrl.services.keys())
+    # module_logger.debug(ctrl.services['js'])
     for name in (name
                  for name in options.services
                  if isinstance(ctrl.services[name], MetaService)):

@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 """Test creation and use of the Container class"""
 
+from copy import deepcopy
 import os
 import random
 import unittest
 import docker
 
+from control.service import create_service
 from control.container import Container
 
 
@@ -37,34 +39,38 @@ class CreateContainer(unittest.TestCase):
 
     def test_happy_path(self):
         """Make sure that the defaults still work"""
-        self.image = 'busybox'
         self.conf = {
-            "name": self.container_name,
-            "hostname": "happy_path"
+            "image": 'busybox',
+            "container": {
+                "name": self.container_name,
+                "hostname": "happy_path"
+            }
         }
-        container = Container(self.conf)
+        serv = create_service(deepcopy(self.conf), './Controlfile')
+        container = Container(serv)
         self.assertEqual(container.service.expected_timeout, 10)
-        self.assertEqual(container.service.conf['name'], self.container_name)
-        self.assertEqual(container.service.conf['hostname'], "happy_path")
-        self.assertEqual(container.service.conf['image'], self.image)
+        self.assertEqual(container.service['name'], self.container_name)
+        self.assertEqual(container.service['hostname'], self.conf['container']['hostname'])
+        self.assertEqual(container.service.image, self.conf['image'])
 
     def test_expected_timeout(self):
         """Test mirroring unspecified values and overriding default timeout"""
-        self.image = 'busybox'
         self.conf = {
-            "name": self.container_name,
-            "expected_timeout": 3
+            "image": 'busybox',
+            "expected_timeout": 3,
+            "container": {
+                "name": self.container_name
+            }
         }
-        container = Container(self.conf)
+        serv = create_service(deepcopy(self.conf), './Controlfile')
+        container = Container(serv)
         self.assertEqual(container.service.expected_timeout, 3)
-        self.assertEqual(container.service.conf['name'], self.container_name)
+        self.assertEqual(container.service['name'], self.container_name)
         self.assertEqual(
-            container.service.conf['hostname'],
+            container.service['hostname'],
             self.container_name,
             msg='Unspecified hostname not being mirrored from container name')
-        self.assertEqual(container.service.conf['image'], self.image)
-        with self.assertRaises(KeyError):
-            container.conf['expected_timeout']
+        self.assertEqual(container.service.image, self.conf['image'])
 
     def test_env_var_parsing(self):
         """
@@ -73,81 +79,100 @@ class CreateContainer(unittest.TestCase):
         """
         self.image = 'busybox'
         self.conf = {
-            "name": self.container_name,
-            "hostname": "grafana",
-            "environment": [
-                "PASSWORD=password",
-            ]
+            "image": self.image,
+            "container": {
+                "name": self.container_name,
+                "hostname": "grafana",
+                "environment": [
+                    "PASSWORD=password",
+                ]
+            }
         }
-        container = Container(self.image, self.conf)
-        conf_copy = container.get_container_options()
-        self.assertEqual(conf_copy['environment'][0], self.conf['environment'][0])
+        serv = create_service(deepcopy(self.conf), './Controlfile')
+        conf_copy = serv.prepare_container_options()
+        self.assertEqual(conf_copy['environment'][0], self.conf['container']['environment'][0])
 
     def test_volume_parsing(self):
         """Make sure that volumes get created correctly"""
-        image = 'busybox'
-        conf = {
-            "name": "grafana",
-            "hostname": "grafana",
-            "volumes": [
-                "/var",
-                "named-user:/usr",
-                "/mnt/usrbin:/usr/bin",
-            ]
+        self.image = 'busybox'
+        self.conf = {
+            "image": self.image,
+            "container": {
+                "name": "grafana",
+                "hostname": "grafana",
+                "volumes": [
+                    "/var",
+                    "named-user:/usr",
+                    "/mnt/usrbin:/usr/bin",
+                ]
+            }
         }
-        container = Container(image, conf)
-        conf_copy = container.get_container_options()
-        self.assertEqual(conf_copy['image'], image)
-        self.assertEqual(conf_copy['host_config']['Binds'][0], conf['volumes'][0])
-        self.assertEqual(conf_copy['host_config']['Binds'][1], conf['volumes'][1])
-        self.assertEqual(conf_copy['host_config']['Binds'][2], conf['volumes'][2])
+        serv = create_service(deepcopy(self.conf), './Controlfile')
+        conf_copy = serv.prepare_container_options()
+        self.assertEqual(conf_copy['host_config']['Binds'][0], self.conf['container']['volumes'][1])
+        self.assertEqual(conf_copy['host_config']['Binds'][1], self.conf['container']['volumes'][2])
+        self.assertEqual(conf_copy['volumes'][0], '/var')
+        self.assertEqual(conf_copy['volumes'][1], '/usr')
+        self.assertEqual(conf_copy['volumes'][2], '/usr/bin')
 
     def test_dns_search(self):
         """test that dns search makes it into the host config"""
         self.image = 'busybox'
         self.conf = {
-            "name": self.container_name,
-            "dns_search": [
-                "example"
-            ]
+            "image": self.image,
+            "container": {
+                "name": self.container_name,
+                "dns_search": [
+                    "example"
+                ]
+            }
         }
-        container = Container(self.image, self.conf)
-        conf_copy = container.get_container_options()
+        serv = create_service(deepcopy(self.conf), './Controlfile')
+        conf_copy = serv.prepare_container_options()
         self.assertEqual(
-            conf_copy['host_config']['dns_search'][0],
-            "example")
+            conf_copy['host_config']['DnsSearch'][0],
+            self.conf["container"]["dns_search"][0])
 
     def test_value_substitution(self):
         """Test name substitution working"""
         self.image = 'busybox'
         self.conf = {
-            "name": "{container}.{{{{COLLECTIVE}}}}".format(container=self.container_name),
-            "environment": [
-                "DOMAIN={{COLLECTIVE}}.petrode.com"
-            ],
-            "volumes": [
-                "/mnt/log/{{COLLECTIVE}}:/var/log"
-            ],
-            "dns_search": [
-                "petrode",
-                "{{COLLECTIVE}}.petrode"
-            ]
+            "image": self.image,
+            "container": {
+                "name": "{container}.{{{{COLLECTIVE}}}}".format(container=self.container_name),
+                "environment": [
+                    "DOMAIN={{COLLECTIVE}}.petrode.com"
+                ],
+                "volumes": [
+                    "/mnt/log/{{COLLECTIVE}}:/var/log"
+                ],
+                "dns_search": [
+                    "petrode",
+                    "{{COLLECTIVE}}.petrode"
+                ]
+            }
         }
         os.environ['COLLECTIVE'] = 'example'
-        container = Container(self.image, self.conf)
-        conf_copy = container.get_container_options()
+        serv = create_service(self.conf, './Controlfile')
+        conf_copy = serv.prepare_container_options()
         self.assertEqual(
             conf_copy['name'],
-            '{container}.example'.format(container=self.container_name))
+            '{container}.{{{{COLLECTIVE}}}}'.format(container=self.container_name))
         self.assertEqual(
             conf_copy['environment'][0],
-            'DOMAIN=example.petrode.com')
+            'DOMAIN={{COLLECTIVE}}.petrode.com')
         self.assertEqual(
             conf_copy['host_config']['Binds'][0],
-            "/mnt/log/example:/var/log")
+            "/mnt/log/{{COLLECTIVE}}:/var/log")
         self.assertEqual(
-            conf_copy['host_config']['dns_search'][1],
-            "example.petrode")
+            conf_copy['volumes'][0],
+            "/var/log")
+        self.assertEqual(
+            conf_copy['host_config']['DnsSearch'][0],
+            "petrode")
+        self.assertEqual(
+            conf_copy['host_config']['DnsSearch'][1],
+            "{{COLLECTIVE}}.petrode")
         del os.environ['COLLECTIVE']
 
 
