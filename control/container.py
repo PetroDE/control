@@ -26,13 +26,13 @@ class Container:
         self.service = service
         self.logger = logging.getLogger('control.container.Container')
 
-    def create(self):
+    def create(self, prod):
         """create a container"""
         try:
             return CreatedContainer(
                 dclient.create_container(
                     self.service.image,
-                    **self.service.prepare_container_options()),
+                    **self.service.prepare_container_options(prod=prod)),
                 self.service)
         except docker.errors.NotFound as e:
             if 'chown' in e.explanation.decode('utf-8'):

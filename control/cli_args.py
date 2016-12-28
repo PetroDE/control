@@ -38,6 +38,10 @@ def build_parser():
         '-i', '--image', default=options.image, help='override the tagged '
         'name of the image being built')
     parser.add_argument(
+        '--prod', action='store_true', help='perform the prod version of this '
+        'action. build-prod is not affected by this change, this will change '
+        'with control 3')
+    parser.add_argument(
         '-n', '--name', help='the name to give to the container')
     parser.add_argument(
         '-r', '--replace', action='store_true', help='Use with container '

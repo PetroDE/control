@@ -112,7 +112,7 @@ class Startable(ImageService):
         self.logger = logging.getLogger('control.service.Startable')
         self.container = {}
         self.host_config = {}
-        self.volumes = []
+        self.volumes = {'self': [], 'dev': [], 'prod': []}
 
         # We're going to hold onto this until we're ready to iterate over it
         container_config = service.pop('container', {})
@@ -134,7 +134,11 @@ class Startable(ImageService):
         except KeyError:
             self.logger.debug('No commands defined')
         try:
-            self.volumes = container_config.pop('volumes')
+            vols = container_config.pop('volumes')
+            if isinstance(vols, list):
+                self.volumes['shared'] = vols
+            elif isinstance(vols, dict):
+                self.volumes.update(vols)
         except KeyError:
             self.logger.debug('No volumes defined')
 
@@ -182,10 +186,10 @@ class Startable(ImageService):
 
         self.logger.debug('found Startable %s', self.service)
 
-    def dump_run(self, pretty=True):
+    def dump_run(self, prod=False, pretty=True):
         """dump out a CLI version of how this container would be started"""
         rep = builder('run', pretty=pretty).image(self.image) \
-                .volume(sorted(self.volumes)) \
+                .volume(sorted(self.volumes_for(prod))) \
                 .env_file(self.env_file)
         for k, v in self.container.items():
             rep = {
@@ -214,7 +218,13 @@ class Startable(ImageService):
             }[k](v)
         return rep
 
-    def prepare_container_options(self):
+    def volumes_for(self, prod):
+        if prod:
+            return self.volumes['shared'] + self.volumes['prod']
+        else:
+            return self.volumes['shared'] + self.volumes['dev']
+
+    def prepare_container_options(self, prod):
         """
         Call this function to dump out a single dict ready to be passed to
         docker.Client.create_container
@@ -223,7 +233,8 @@ class Startable(ImageService):
         # hc = dclient.create_host_config(**self.host_config)
         # return {**self.container, **hc}
         self.logger.debug('startable using 3.4 version')
-        self.container['volumes'], self.host_config['binds'] = _split_volumes(self.volumes)
+        self.container['volumes'], self.host_config['binds'] = _split_volumes(
+            self.volumes_for(prod))
         self.logger.debug('container: %s', self.container)
         self.logger.debug('host_config: %s', self.host_config)
         hc = dclient.create_host_config(**self.host_config)

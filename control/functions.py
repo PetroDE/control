@@ -281,8 +281,12 @@ def start(args, ctrl):
         container = Container(service)
 
         upstream = Repository.match(service.image)
-        if not container.image_exists() and not service.buildable() and pulling(upstream):
+        should_pull = not container.image_exists() and not service.buildable() and pulling(upstream)
+        if not options.dump and should_pull:
             pull_image(upstream)
+        elif options.dump and should_pull:
+            # TODO: print pull command
+            pass
 
         try:
             # TODO: if a container exists but the options don't match, log out that
@@ -292,11 +296,11 @@ def start(args, ctrl):
         except ContainerDoesNotExist:
             pass  # This will probably be the majority case
         if options.dump:
-            print(container.service.dump_run())
+            print(container.service.dump_run(prod=options.prod))
         else:
             print('Starting {}'.format(service['name']))
             try:
-                container = container.create()
+                container = container.create(prod=options.prod)
                 container.start()
             except ContainerException as e:
                 module_logger.debug('outer start containerexception caught')
