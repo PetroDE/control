@@ -378,7 +378,7 @@ def opencontainer(args, ctrl):
         if not (container.stop() and container.remove()):
             print('could not stop {}'.format(ctrl.services[name]['name']))
             return False
-    container = Container(ctrl.services[name]).create()
+    container = Container(ctrl.services[name]).create(prod=options.prod)
     os.execlp('docker', 'docker', 'start', '-a', '-i', ctrl.services[name]['name'])
 
 
@@ -454,7 +454,7 @@ def command(args, ctrl):
             # else:
             if not options.dump:
                 try:
-                    container = container.create()
+                    container = container.create(prod=options.prod)
                     container.start()
                 except ImageNotFound as e:
                     module_logger.critical(e)
@@ -525,7 +525,7 @@ def command(args, ctrl):
                 print(service.dump_run())
             else:
                 try:
-                    container = container.create()
+                    container = container.create(prod=options.prod)
                     container.start()
                 except ContainerException as e:
                     module_logger.debug('outer start containerexception caught')
