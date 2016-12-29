@@ -40,7 +40,7 @@ class TestServicefile(unittest.TestCase):
                          self.conf['image'])
         self.assertEqual(ctrlfile.services['example'].controlfile,
                          self.controlfile)
-        self.assertEqual(ctrlfile.services['example'].volumes,
+        self.assertEqual(ctrlfile.services['example'].volumes_for(prod=False),
                          self.conf['container']['volumes'])
         self.assertEqual(ctrlfile.services['example']['dns_search'],
                          self.conf['container']['dns_search'])
@@ -219,7 +219,7 @@ class TestNestedMetaServices(unittest.TestCase):
         with open(controlfile, 'w') as f:
             f.write(json.dumps(conf))
         ctrlfile = Controlfile(controlfile)
-        self.assertEqual(set(ctrlfile.services['test']['volumes']),
+        self.assertEqual(set(ctrlfile.services['test'].volumes_for(prod=False)),
                          {'example:/home', 'vardata:/var/lib/example'})
 
     def test_replace(self):

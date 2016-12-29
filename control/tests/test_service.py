@@ -312,7 +312,7 @@ class TestContainerOptions(unittest.TestCase):
                 "dev": join(os.getcwd(), 'Dockerfile.example'),
             })
         # import pytest; pytest.set_trace()
-        self.assertEqual(result.volumes, self.serv['container']['volumes'])
+        self.assertEqual(result.volumes_for(prod=False), self.serv['container']['volumes'])
         self.assertEqual(
             result.container,
             {
@@ -358,7 +358,7 @@ class TestContainerOptions(unittest.TestCase):
     def test_generate_container(self):
         """make sure that the create_container config is as expected"""
         result = BSService(deepcopy(self.serv), self.cntrlfile)
-        js = result.prepare_container_options()
+        js = result.prepare_container_options(prod=False)
         self.assertEqual(js['volumes'],
                          ["/etc", "/var/lib", "/var/tmp"])
         self.assertIn('Binds', js['host_config'])
@@ -389,7 +389,7 @@ class TestEnvFile(unittest.TestCase):
         }
         cntrlfile = "./Controlfile"
         result = Startable(serv, cntrlfile)
-        js = result.prepare_container_options()
+        js = result.prepare_container_options(prod=False)
         self.assertEqual(js['environment'], {"FOO": "bar"})
         temp_dir.cleanup()
 
@@ -417,7 +417,7 @@ class TestEnvFile(unittest.TestCase):
         }
         cntrlfile = "./Controlfile"
         result = Startable(serv, cntrlfile)
-        js = result.prepare_container_options()
+        js = result.prepare_container_options(prod=False)
         self.assertEqual(
             js['environment'],
             {
@@ -447,7 +447,7 @@ class TestEnvFile(unittest.TestCase):
         cntrlfile = "./Controlfile"
         result = Startable(serv, cntrlfile)
         with self.assertLogs(result.logger, level='WARNING') as cm:
-            result.prepare_container_options()
+            result.prepare_container_options(prod=False)
         self.assertEqual(
             cm.output,
             [

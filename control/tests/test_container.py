@@ -89,7 +89,7 @@ class CreateContainer(unittest.TestCase):
             }
         }
         serv = create_service(deepcopy(self.conf), './Controlfile')
-        conf_copy = serv.prepare_container_options()
+        conf_copy = serv.prepare_container_options(prod=False)
         self.assertEqual(conf_copy['environment'][0], self.conf['container']['environment'][0])
 
     def test_volume_parsing(self):
@@ -108,7 +108,7 @@ class CreateContainer(unittest.TestCase):
             }
         }
         serv = create_service(deepcopy(self.conf), './Controlfile')
-        conf_copy = serv.prepare_container_options()
+        conf_copy = serv.prepare_container_options(prod=False)
         self.assertEqual(conf_copy['host_config']['Binds'][0], self.conf['container']['volumes'][1])
         self.assertEqual(conf_copy['host_config']['Binds'][1], self.conf['container']['volumes'][2])
         self.assertEqual(conf_copy['volumes'][0], '/var')
@@ -128,7 +128,7 @@ class CreateContainer(unittest.TestCase):
             }
         }
         serv = create_service(deepcopy(self.conf), './Controlfile')
-        conf_copy = serv.prepare_container_options()
+        conf_copy = serv.prepare_container_options(prod=False)
         self.assertEqual(
             conf_copy['host_config']['DnsSearch'][0],
             self.conf["container"]["dns_search"][0])
@@ -154,7 +154,7 @@ class CreateContainer(unittest.TestCase):
         }
         os.environ['COLLECTIVE'] = 'example'
         serv = create_service(self.conf, './Controlfile')
-        conf_copy = serv.prepare_container_options()
+        conf_copy = serv.prepare_container_options(prod=False)
         self.assertEqual(
             conf_copy['name'],
             '{container}.{{{{COLLECTIVE}}}}'.format(container=self.container_name))

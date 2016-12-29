@@ -97,8 +97,8 @@ def function_dispatch(args, ctrl):
     """Decide which function to call"""
     try:
         return dispatch_dict[options.command](args, ctrl)
-    except KeyError:
-        pass
+    except KeyError as e:
+        module_logger.debug('dispatch keyerror: %s', e)
     return command(args, ctrl)
 
 

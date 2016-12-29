@@ -121,7 +121,8 @@ class Controlfile:
 
         self.create_service(data, 'all', {}, variables, controlfile_location)
 
-    def read_in_file(self, controlfile):
+    @classmethod
+    def read_in_file(cls, controlfile):
         """Open a file, read it if it's json, complain otherwise"""
         try:
             with open(controlfile, 'r') as f:
@@ -207,7 +208,7 @@ class Controlfile:
         used to ensure that Controlfile discovery worked correctly in tests,
         and then I decided it could conceivably be useful for Control.
         """
-        return self.services.keys()
+        return frozenset(self.services.keys())
 
     def get_all_commands(self):
         """

@@ -2,7 +2,6 @@
 Define a startable service
 """
 
-from copy import deepcopy
 import logging
 from os.path import isfile
 
@@ -112,7 +111,7 @@ class Startable(ImageService):
         self.logger = logging.getLogger('control.service.Startable')
         self.container = {}
         self.host_config = {}
-        self.volumes = {'self': [], 'dev': [], 'prod': []}
+        self.volumes = {'shared': [], 'dev': [], 'prod': []}
 
         # We're going to hold onto this until we're ready to iterate over it
         container_config = service.pop('container', {})
@@ -132,6 +131,7 @@ class Startable(ImageService):
         try:
             self.commands = service.pop('commands')
         except KeyError:
+            self.commands = {}
             self.logger.debug('No commands defined')
         try:
             vols = container_config.pop('volumes')
@@ -189,8 +189,9 @@ class Startable(ImageService):
     def dump_run(self, prod=False, pretty=True):
         """dump out a CLI version of how this container would be started"""
         rep = builder('run', pretty=pretty).image(self.image) \
-                .volume(sorted(self.volumes_for(prod))) \
-                .env_file(self.env_file)
+                .volume(sorted(self.volumes_for(prod)))
+        if self.env_file:
+            rep = rep.env_file(self.env_file)
         for k, v in self.container.items():
             rep = {
                 'command': rep.command,
@@ -219,6 +220,7 @@ class Startable(ImageService):
         return rep
 
     def volumes_for(self, prod):
+        """Return a joined list of shared and specific volumes"""
         if prod:
             return self.volumes['shared'] + self.volumes['prod']
         else:

@@ -52,7 +52,7 @@ class VolumeCreationTests(unittest.TestCase):
             }
         }
         serv = create_service(self.conf, './Controlfile')
-        container = Container(serv).create()
+        container = Container(serv).create(prod=False)
         container.start()
         self.assertEqual(len(container.inspect['Mounts']), 1)
         self.assertEqual(len(container.inspect['Mounts'][0]['Name']), 65)
@@ -77,7 +77,7 @@ class VolumeCreationTests(unittest.TestCase):
             }
         }
         serv = create_service(self.conf, './Controlfile')
-        container = Container(serv).create()
+        container = Container(serv).create(prod=False)
         container.start()
         self.assertEqual(len(container.inspect['Mounts']), 1)
         self.assertEqual(len(container.inspect['Mounts'][0]['Name']), len(volume_name))
@@ -103,7 +103,7 @@ class VolumeCreationTests(unittest.TestCase):
             }
         }
         serv = create_service(self.conf, './Controlfile')
-        container = Container(serv).create()
+        container = Container(serv).create(prod=False)
         container.start()
         self.assertEqual(len(container.inspect['Mounts']), 1)
         self.assertEqual(container.inspect['Mounts'][0]['Destination'], '/var')
