@@ -6,9 +6,7 @@ from .service import Service
 class MetaService(Service):
     """Keep a list of all the services that are included in this metaservice"""
 
-    service_options = Service.service_options | {
-        'services'
-    }
+    service_options = Service.service_options
 
     def __init__(self, service, controlfile):
         super().__init__(service, controlfile)

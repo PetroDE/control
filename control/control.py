@@ -28,6 +28,9 @@ from control.service import MetaService
 module_logger = logging.getLogger('control')
 module_logger.setLevel(logging.DEBUG)
 
+def flatten(l):
+    return [x for sublist in l for x in sublist]
+
 
 def sigint_handler(sig, frame):  # pylint: disable=unused-argument
     """Gracefully handle receiving ctrl-c"""
@@ -81,11 +84,13 @@ def main(args):
     # Flatten the service list by replacing metaservices with their service lists
     module_logger.debug(ctrl.services.keys())
     # module_logger.debug(ctrl.services['js'])
-    for name in (name
-                 for name in options.services
-                 if isinstance(ctrl.services[name], MetaService)):
-        options.services += ctrl.services[name].services
-        options.services.remove(name)
+    # for name in (name
+    #              for name in options.services
+    #              if isinstance(ctrl.services[name], MetaService)):
+    #     options.services += ctrl.services[name].services
+    #     options.services.remove(name)
+    options.services = flatten(
+        ctrl.services[name].services for name in options.services)
 
     # Override image name if only one service discovered
     if options.image and len(options.services) == 1:

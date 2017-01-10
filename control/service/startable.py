@@ -123,6 +123,8 @@ class Startable(ImageService):
         elif service_empty:
             self.service = Repository.match(self.image).image
 
+        self.services = [self.service]
+
         env = list({'envfile', 'env_file'} & set(container_config.keys()))
         if len(env) > 0:
             self.env_file = container_config.pop(env[0])

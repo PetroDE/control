@@ -14,6 +14,7 @@ class Service:
     service_options = {
         'controlfile',
         'service',
+        'services',
     }
 
     def __init__(self, service, controlfile):
@@ -24,6 +25,8 @@ class Service:
             self.service = service.pop('service')
         except KeyError:
             self.service = ""
+
+        self.services = [self.service]
 
         try:
             self.required = service.pop('required')

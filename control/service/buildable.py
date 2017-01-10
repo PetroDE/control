@@ -35,6 +35,7 @@ class Buildable(ImageService):
         try:
             self.events = service.pop('events')
         except KeyError:
+            self.events = {}
             self.logger.debug('No events defined')
 
         try:
@@ -103,6 +104,7 @@ class Buildable(ImageService):
         if not self.service:
             self.logger.debug('setting service name from guess')
             self.service = Repository.match(self.image).image
+            self.services = [self.service]
 
         self.logger.debug('Found Buildable %s', self.service)
 
