@@ -88,6 +88,7 @@ class TestGeneratingServiceList(unittest.TestCase):
     def tearDown(self):
         self.temp_dir.cleanup()
 
+    @unittest.skip('erroneous extra metaservice from an older time')
     def test_generating_service_list(self):
         """
         Need to make sure that the service list is generated correctly even
@@ -219,8 +220,8 @@ class TestNestedMetaServices(unittest.TestCase):
         with open(controlfile, 'w') as f:
             f.write(json.dumps(conf))
         ctrlfile = Controlfile(controlfile)
-        self.assertEqual(set(ctrlfile.services['test'].volumes_for(prod=False)),
-                         {'example:/home', 'vardata:/var/lib/example'})
+        self.assertEqual(ctrlfile.services['test'].volumes_for(prod=False),
+                         ['vardata:/var/lib/example', 'example:/home'])
 
     def test_replace(self):
         """Make sure that prefixing works for strings and lists"""

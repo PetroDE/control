@@ -8,16 +8,10 @@ import subprocess
 
 from control.exceptions import InvalidControlfile
 from control.service import MetaService, Startable, ImageService, create_service
+from control.substitution import normalize_service, satisfy_nested_options, _substitute_vars
 
 dn = os.path.dirname
 module_logger = logging.getLogger('control.controlfile')
-
-operations = {
-    'suffix': '{0}{1}'.format,
-    'prefix': '{1}{0}'.format,
-    'union': lambda x, y: set(x) | set(y),
-    'replace': lambda x, y: y,
-}
 
 
 def CountCalls(f):
@@ -25,6 +19,7 @@ def CountCalls(f):
     f.count = 0
 
     def wrapper(*args, **kwargs):
+        """log calls to a function, and the return value"""
         module_logger.debug('%s called. %i', f.__name__, f.count)
         f.count += 1
         ret = f(*args, **kwargs)
@@ -229,113 +224,3 @@ class Controlfile:
                 if isinstance(service, Startable)
             )
         })
-
-
-# TODO: eventually the global options will go away, switch this back to options then
-def normalize_service(service, opers, variables):
-    """
-    Takes a service, and options and applies the transforms to the service.
-
-    Allowed args:
-    - service: must be service object that was created before hand
-    - options: a dict of options that define transforms to a service.
-      The format must conform to a Controlfile metaservice options
-      definition
-    Returns: a service with all the transforms applied and all the variables
-             substituted in.
-    """
-    # We check that the Controlfile only specifies operations we support,
-    # that way we aren't trusting a random user to accidentally get a
-    # random string eval'd.
-    for key, op, val in (
-            (key, op, val)
-            for key, ops in opers.items()
-            for op, val in ops.items() if op in operations.keys()):
-        module_logger.log(11, "service '%s' %sing %s with '%s'.",
-                          service.service, op, key, val)
-        try:
-            service[key] = operations[op](service[key], val)
-        except KeyError as e:
-            module_logger.debug(e)
-            module_logger.log(11, "service '%s' missing key '%s'",
-                              service.service, key)
-            module_logger.log(11, service.__dict__)
-    for key in service.keys():
-        try:
-            module_logger.debug('now at %s, passing in %i vars', key, len(variables))
-            service[key] = _substitute_vars(service[key], variables)
-        except KeyError:
-            continue
-    return service['service'], service
-
-
-# used exclusively by visit_every_leaf, but defined outside it so it's only compiled once
-substitute_vars_decision_dict = {
-    # dict, list, str
-    (True, False, False): lambda d, vd: {k: _substitute_vars(v, vd) for k, v in d.items()},
-    (False, True, False): lambda d, vd: [x.format(**vd) for x in d],
-    (False, False, True): lambda d, vd: d.format(**vd),
-    (False, False, False): lambda d, vd: d
-}
-
-
-def _substitute_vars(d, var_dict):
-    """
-    Visit every leaf and substitute any variables that are found. This function
-    is named poorly, it sounds like it should generically visit every and allow
-    a function to be applied to each leaf. It does not. I have no need for that
-    right now. If I find a need this will probably be the place that that goes.
-
-    Arguments:
-    - d does not necessarily need to be a dict
-    - var_dict should be a dictionary of variables that can be kwargs'd into
-      format
-    """
-    # DEBUGGING
-    module_logger.debug('now at %s', str(d))
-    # DEBUGGING
-    return substitute_vars_decision_dict[(
-        isinstance(d, dict),
-        isinstance(d, list) or isinstance(d, set),
-        isinstance(d, str)
-    )](d, var_dict)
-
-
-def satisfy_nested_options(outer, inner):
-    """
-    Merge two Controlfile options segments for nested Controlfiles.
-
-    - Merges appends by having "{{layer_two}}{{layer_one}}"
-    - Merges option additions with layer_one.push(layer_two)
-    """
-    merged = {}
-    for key in set(outer.keys()) | set(inner.keys()):
-        ops = set(outer.get(key, {}).keys()) | set(inner.get(key, {}).keys())
-        val = {}
-        # apply outer suffix and prefix to the inner union
-        if 'union' in ops:
-            # inner_union = [operations['prefix'](operations['suffix'](x, outer.get(key, {}).get('suffix', '')),
-            #                                     outer.get(key, {}).get('prefix', ''))
-            #                for x in inner.get(key, {}).get('union', [])]
-            # if inner_union != []:
-            #     val['union'] = set(outer.get(key, {}).get('union', [])) | set(inner.get(key, {}).get('union', []))
-            union = set(outer.get(key, {}).get('union', [])) | set(inner.get(key, {}).get('union', []))
-            if union:
-                val['union'] = union
-        elif 'suffix' in ops:
-            suffix = operations['suffix'](inner.get(key, {}).get('suffix', ''),
-                                          outer.get(key, {}).get('suffix', ''))
-            if suffix != '':
-                val['suffix'] = suffix
-        elif 'prefix' in ops:
-            prefix = operations['prefix'](inner.get(key, {}).get('prefix', ''),
-                                          outer.get(key, {}).get('prefix', ''))
-            if prefix != '':
-                val['prefix'] = prefix
-        elif 'replace' in ops:
-            temp_ = outer.get(key, {}).get('replace', None)
-            replace = operations['replace']('', temp_ if temp_ else inner.get(key).get('replace'))
-            if replace != '':
-                val['replace'] = replace
-        merged[key] = val
-    return merged

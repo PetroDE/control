@@ -1,0 +1,20 @@
+## 2.4.0.alpha7
+
+* [BUGFIX] Variable and Option substitution works, and has tests
+
+## 2.4.0.alpha4
+
+* [BUGFIX] Unioning volumes works again with split shared/dev/prod volumes
+
+## 2.4.0.alpha3
+
+* [BUGFIX] Metaservice list correctly substitutes concrete services
+
+## 2.4.0.alpha2
+
+* [BUGFIX] Running commands works in prod containers works
+
+## 2.4.0.alpha1
+
+* [FEATURE] Ability to have different volumes mounted into containers between dev and prod
+* [ENHANCEMENT] Stronger underlying mechanisms for constructing different service types
