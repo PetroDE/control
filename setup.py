@@ -28,7 +28,7 @@ setup(
     ],
     keywords='docker container build ci',
     packages=find_packages(exclude=['tests']),
-    install_requirements=[
+    install_requires=[
         'docker-py ~= 1.7.2',
         'python-dateutil',
         'requests ~= 2.10.0',
