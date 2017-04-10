@@ -1,3 +1,7 @@
+## 2.4.0.alpha9
+
+* [BUGFIX] control start --dump now includes the --detach flag
+
 ## 2.4.0.alpha8
 
 * [BUGFIX] Fix crash when trying to build a service that does not define a pre-build event

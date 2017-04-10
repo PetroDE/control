@@ -220,7 +220,7 @@ class Startable(ImageService):
                 'links': rep.link,
                 'volumes_from': rep.volumes_from,
             }[k](v)
-        return rep
+        return rep.detach()
 
     def volumes_for(self, prod):
         """Return a joined list of shared and specific volumes"""

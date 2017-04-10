@@ -164,32 +164,32 @@ class RunBuilder(Builder):
 
     def __init__(self, cmd, pretty=True):
         super(RunBuilder, self).__init__(cmd, pretty=pretty)
-        self.image_ = ''
-        self.command_ = ''
+        self._image = ''
+        self._command = ''
 
     def image(self, name):
         """set the image that the container should be using"""
-        self.image_ = name
+        self._image = name
         return self
 
     def command(self, value):
         """run this command from the entrypoint"""
         if isinstance(value, list):
-            self.command_ = ' '.join(value)
+            self._command = ' '.join(value)
         elif isinstance(value, str):
-            self.command_ = value
+            self._command = value
         else:
             raise TypeError(value)
         return self
 
     def __str__(self):
-        if not self.image_:
+        if not self._image:
             raise ControlException('No image declared. Cannot create docker run command')
         s = super(RunBuilder, self).__str__()
-        if self.command_:
-            return '{}{i}{sep}{cmd}'.format(s, sep=self.sep, i=self.image_, cmd=self.command_)
+        if self._command:
+            return '{}{i}{sep}{cmd}'.format(s, sep=self.sep, i=self._image, cmd=self._command)
         else:
-            return '{}{i}'.format(s, i=self.image_)
+            return '{}{i}'.format(s, i=self._image)
 
 
 class ExecBuilder(Builder):
@@ -201,34 +201,34 @@ class ExecBuilder(Builder):
 
     def __init__(self, cmd, pretty=True):
         super(ExecBuilder, self).__init__(cmd, pretty=pretty)
-        self.container_ = ''
-        self.command_ = ''
+        self._container = ''
+        self._command = ''
 
     def container(self, name):
         """set the container the exec should be using"""
-        self.container_ = name
+        self._container = name
         return self
 
     def command(self, value):
         """run this command from the entrypoint"""
         if isinstance(value, list):
-            self.command_ = ' '.join(value)
+            self._command = ' '.join(value)
         elif isinstance(value, str):
-            self.command_ = value
+            self._command = value
         else:
             raise TypeError(value)
         return self
 
     def __str__(self):
-        if not self.container_:
+        if not self._container:
             raise ControlException('No container declared. Cannot create docker exec command')
-        if not self.command_:
+        if not self._command:
             raise ControlException('No command declared. Cannot create docker exec command')
         s = super(ExecBuilder, self).__str__()
         return '{}{i}{sep}{cmd}'.format(s,
                                         sep=self.sep,
-                                        i=self.container_,
-                                        cmd=self.command_)
+                                        i=self._container,
+                                        cmd=self._command)
 
 
 class ContainerBuilder(Builder):
@@ -239,27 +239,27 @@ class ContainerBuilder(Builder):
 
     def __init__(self, cmd, pretty=True):
         super(ContainerBuilder, self).__init__(cmd, pretty=pretty)
-        self.container_ = []
+        self._container = []
 
     def __str__(self):
-        if not self.container_:
+        if not self._container:
             # You are correct, rmi will error out saying 'container' instead of
             # image. Deal with it.
             raise ControlException('No container declared. Cannot create '
                                    'docker {} command'.format(self.cmd))
-        self.positional = ' '.join(self.container_)
+        self.positional = ' '.join(self._container)
         return super(ContainerBuilder, self).__str__()
 
     def container(self, value):
         """pass a container (or list of containers) to rm"""
         if value and isinstance(value, list):
-            self.container_ += value
+            self._container += value
         elif value and isinstance(value, set):
-            self.container_ += list(value)
+            self._container += list(value)
         elif value and isinstance(value, str):
-            self.container_.append(value)
+            self._container.append(value)
         else:
-            self.container_.append(str(value))
+            self._container.append(str(value))
         return self
 
 
