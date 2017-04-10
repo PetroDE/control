@@ -4,10 +4,10 @@ Specialize Service for services that can't be containers. Images only club
 
 import logging
 from os.path import abspath, dirname, isfile, join
-from copy import deepcopy
 
-from control.exceptions import InvalidControlfile
+from control.cli_builder import builder
 from control.repository import Repository
+from control.options import options
 from control.service.service import ImageService
 
 
@@ -25,6 +25,8 @@ class Buildable(ImageService):
         'events',
         'fromline',
     } | ImageService.service_options
+
+    all_options = service_options
 
     def __init__(self, service, controlfile):
         super().__init__(service, controlfile)
@@ -104,7 +106,6 @@ class Buildable(ImageService):
         if not self.service:
             self.logger.debug('setting service name from guess')
             self.service = Repository.match(self.image).image
-            self.services = [self.service]
 
         self.logger.debug('Found Buildable %s', self.service)
 
@@ -119,7 +120,6 @@ class Buildable(ImageService):
             .force_rm(options.force) \
             .no_cache(not options.cache)
         return rep
-
 
     def buildable(self):
         """Check if the service is buildable"""

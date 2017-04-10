@@ -1,3 +1,7 @@
+## 2.4.0.alpha8
+
+* [BUGFIX] Fix crash when trying to build a service that does not define a pre-build event
+
 ## 2.4.0.alpha7
 
 * [BUGFIX] Variable and Option substitution works, and has tests

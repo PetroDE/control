@@ -64,6 +64,7 @@ class Startable(ImageService):
             'l',
             'tmpfs'
             'v',
+            'binds',
         }
     )
 
@@ -273,9 +274,10 @@ class Startable(ImageService):
         # return list(self.service_options |
         #             {*self.container.keys()} |
         #             {*self.host_config.keys()})
+        # TODO: this is wrong
         return list(self.service_options |
-                    set(self.container.keys()) |
-                    set(self.host_config.keys()))
+                    self.container.keys() |
+                    self.host_config.keys())
 
     def __lt__(self, other):
         return (self.service, self.container['name']) < (other.service, other.container['name'])

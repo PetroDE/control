@@ -2,11 +2,11 @@
 A Buildable and Startable Service
 """
 
-from copy import deepcopy
 import logging
 
 from control.service.buildable import Buildable
 from control.service.startable import Startable
+
 
 class BSService(Buildable, Startable):
     """
@@ -16,6 +16,7 @@ class BSService(Buildable, Startable):
     """
 
     service_options = Buildable.service_options | Startable.service_options
+    all_options = Buildable.all_options | Startable.all_options
 
     def __init__(self, service, controlfile):
         super().__init__(service, controlfile)
