@@ -2,6 +2,7 @@
 
 import logging
 import os
+import re
 import shutil
 
 import docker
@@ -10,8 +11,9 @@ from control.dclient import dclient
 from control.options import options
 from control.exceptions import (
     ContainerAlreadyExists, ContainerDoesNotExist,
-    VolumePseudoExists, InvalidVolumeName,
-    TransientVolumeCreation, ImageNotFound
+    ContainerException, VolumePseudoExists,
+    InvalidVolumeName, TransientVolumeCreation,
+    ImageNotFound
 )
 
 
@@ -99,6 +101,13 @@ class CreatedContainer(Container):
             if e.explanation.decode('utf-8') == 'get: volume not found':
                 raise InvalidVolumeName('volume not found')
             raise
+        except docker.errors.APIError as e:
+            server_error = e.explanation.decode('utf-8')
+            if re.fullmatch('mkdir .+: operation not permitted', server_error):
+                volume = self.service.find_volume(server_error.split(':')[0][6:])
+                raise ContainerException('Invalid Host Binding in {}: {}'.format(
+                    self.service['name'],
+                    volume if len(volume) > 1 else volume[0]))
         else:
             self.inspect = dclient.inspect_container(self.inspect['Id'])
         return self.inspect['State']['Running']

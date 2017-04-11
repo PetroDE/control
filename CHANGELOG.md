@@ -1,3 +1,7 @@
+## 2.4.0.alpha10
+
+* [ENHANCEMENT] If a host binding cannot be created, an error is shown with the volume in error instead of showing an HTTP 500 error.
+
 ## 2.4.0.alpha9
 
 * [BUGFIX] control start --dump now includes the --detach flag

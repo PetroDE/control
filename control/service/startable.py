@@ -222,6 +222,16 @@ class Startable(ImageService):
             }[k](v)
         return rep.detach()
 
+    def find_volume(self, substr):
+        """
+        For better error messages, need to find a volume definition by substring
+        """
+        return [vol
+                for vol in self.volumes['dev'] +
+                self.volumes['prod'] +
+                self.volumes['shared']
+                if substr in vol]
+
     def volumes_for(self, prod):
         """Return a joined list of shared and specific volumes"""
         if prod:

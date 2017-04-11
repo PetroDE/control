@@ -305,6 +305,7 @@ def start(args, ctrl):
             except ContainerException as e:
                 module_logger.debug('outer start containerexception caught')
                 module_logger.critical(e)
+                no_err = False
             except ImageNotFound as e:
                 module_logger.critical(e)
                 no_err = False
