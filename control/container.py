@@ -8,7 +8,6 @@ import shutil
 import docker
 
 from control.dclient import dclient
-from control.options import options
 from control.exceptions import (
     ContainerAlreadyExists, ContainerDoesNotExist,
     ContainerException, VolumePseudoExists,
@@ -27,14 +26,27 @@ class Container:
     def __init__(self, service):
         self.service = service
         self.logger = logging.getLogger('control.container.Container')
+        self.volumes = True
 
     def create(self, prod):
         """create a container"""
+        container_opts = self.service.prepare_container_options(prod=prod)
+        if not self.run_with_volumes():
+            self.logger.debug('removing volumes')
+            try:
+                del container_opts['volumes']
+            except KeyError:
+                self.logger.debug('service %s does not define volumes')
+            try:
+                del container_opts['host_config']['Binds']
+            except KeyError:
+                pass
         try:
+            self.logger.debug(container_opts)
             return CreatedContainer(
                 dclient.create_container(
                     self.service.image,
-                    **self.service.prepare_container_options(prod=prod)),
+                    **container_opts),
                 self.service)
         except docker.errors.NotFound as e:
             if 'chown' in e.explanation.decode('utf-8'):
@@ -59,6 +71,20 @@ class Container:
             self.logger.debug(e.response)
             self.logger.debug(e.explanation.decode('utf-8'))
             raise
+
+    def disable_volumes(self):
+        """When the container is created, do not create any volumes or binds"""
+        self.volumes = False
+
+    def enable_volumes(self):
+        """When the container is created, do not create any volumes or binds"""
+        self.volumes = True
+
+    def run_with_volumes(self):
+        """
+        Query whether the container will be started with or without volumes
+        """
+        return self.volumes
 
     def image_exists(self):
         """Check whether the image the container needs exists locally on the host"""
@@ -165,7 +191,7 @@ class CreatedContainer(Container):
 
     def remove_volumes(self):
         """Any volumes that were in use by the container will be removed"""
-        if options.debug:
+        if self.logger.isEnabledFor(logging.DEBUG):
             self.logger.debug('Docker has removed these volumes:')
             for v in (v['Source']
                       for v in self.inspect['Mounts']

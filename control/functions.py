@@ -276,9 +276,9 @@ def start(args, ctrl):
                            for name in args.services
                            if isinstance(ctrl.services[name], Startable))):
 
-        if options.no_volumes:
-            service['volumes'] = []
         container = Container(service)
+        if options.no_volumes:
+            container.disable_volumes()
 
         upstream = Repository.match(service.image)
         should_pull = not container.image_exists() and not service.buildable() and pulling(upstream)
