@@ -18,12 +18,24 @@ class Kind(Enum):
     dict = 3
 
 
+DEFAULT_KIND_MAPPING = {
+    Kind.singular: str,
+    Kind.list: list,
+    Kind.dict: dict,
+}
+
+
+def _get_default_of_kind(val):
+    return DEFAULT_KIND_MAPPING[_determine_kind(val)]()
+
+
 def _pick_most_generic(left, right):
-    return {
-        Kind.singular: str,
-        Kind.list: list,
-        Kind.dict: dict,
-    }[sorted([_determine_kind(left), _determine_kind(right)], key=lambda x: x.value)[-1]]()
+    return DEFAULT_KIND_MAPPING[
+        sorted([
+            _determine_kind(left),
+            _determine_kind(right)
+        ], key=lambda x: x.value)[-1]
+    ]()
     # Make sure to call the constructor so you get a new object of that type
     # instead of something else
 
@@ -144,15 +156,16 @@ def normalize_service(service, opers, variables):
                                            key in service.all_options)):
         module_logger.log(11, "service '%s' %sing %s with '%s'.",
                           service.service, op, key, val)
-        dest_kind = _determine_kind(service[key])
-        source_kind = _determine_kind(val)
         try:
-            service[key] = operations[(dest_kind, source_kind, op)](service[key], val)
+            replacement = operations[op](service[key], val)
         except KeyError as e:
             module_logger.debug(e)
             module_logger.log(11, "service '%s' missing key '%s'",
                               service.service, key)
             module_logger.log(11, service.__dict__)
+            replacement = operations[op](_get_default_of_kind(val), val)
+        finally:
+            service[key] = replacement
     for key in service.keys():
         try:
             module_logger.debug('now at %s, passing in %i vars', key, len(variables))
