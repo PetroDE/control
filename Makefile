@@ -28,7 +28,7 @@ clean:
 	-rm $(EXE)
 
 reallyclean: clean
-	-rm -r **/__pycache__ __pycache__
-	-rm **/*pyc *pyc
-	-rm **/results*.xml results*.xml **/.coverage .coverage **/coverage.xml coverage.xml
-	-rm **/*,cover *,cover
+	-rm -r */**/__pycache__ __pycache__
+	-rm */**/*pyc *pyc
+	-rm */**/results*.xml results*.xml */**/.coverage .coverage */**/coverage.xml coverage.xml
+	-rm */**/*,cover *,cover
