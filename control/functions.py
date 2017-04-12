@@ -42,7 +42,7 @@ def image_is_newer(base):
     try:
         remote_date = dup.parse(reg.get_build_date_of_repo(base))
     except ValueError:
-        module_logger.warning('Image does not exist in registry')
+        module_logger.debug('Image does not exist in registry')
         return False
     try:
         local_date = dup.parse(dclient.inspect_image(base.repo)['Created'])
@@ -129,7 +129,8 @@ def build(args, ctrl):  # TODO: DRY it up
     if args.cache is None:
         args.cache = True
     module_logger.debug('running docker build')
-    print('building services: {}'.format(", ".join(sorted(args.services))))
+    if len(args.services) > 1:
+        print('building services: {}'.format(", ".join(sorted(args.services))))
 
     module_logger.debug('all services discovered: %s', ctrl.services.keys())
     module_logger.debug(ctrl.services['all'])
@@ -174,7 +175,7 @@ def build(args, ctrl):  # TODO: DRY it up
                     continue
             tmpfile.flush()
 
-            if pulling(upstream) and image_is_newer(upstream):
+            if pulling(upstream) and not image_is_newer(upstream):
                 pull_image(upstream)
             if not args.dry_run:
                 build_args = {
@@ -281,7 +282,12 @@ def start(args, ctrl):
             container.disable_volumes()
 
         upstream = Repository.match(service.image)
-        should_pull = not container.image_exists() and not service.buildable() and pulling(upstream)
+        if module_logger.isEnabledFor(logging.DEBUG):
+            module_logger.debug('pull deciders')
+            module_logger.debug('not container.image_exists(): %s', not container.image_exists())
+            module_logger.debug('not service.buildable(): %s', not service.buildable())
+            module_logger.debug('pulling(upstream): %s', pulling(upstream))
+            should_pull = not container.image_exists() and not service.buildable() and pulling(upstream)
         if not options.dump and should_pull:
             pull_image(upstream)
         elif options.dump and should_pull:
