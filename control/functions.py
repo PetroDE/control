@@ -78,6 +78,7 @@ def pull_image(image):
             repository=image.get_pull_image_name(),
             tag=image.tag)):
         print_formatted(line)
+    module_logger.debug('End of Pull Image')
 
 
 def print_formatted(line):

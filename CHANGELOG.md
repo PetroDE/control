@@ -1,3 +1,8 @@
+## 2.4.1
+
+* [FEATURE] New variable for interpolation: RANDOM will be unique for most places in a Controlfile
+* [FEATURE] New variable for interpolation: CONTROL_SESSION_UUID unique for each control run
+
 ## 2.4.0
 
 * [FEATURE] Ability to have different volumes mounted into containers between dev and prod

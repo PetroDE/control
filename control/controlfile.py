@@ -5,6 +5,7 @@ import logging
 import os
 import os.path
 import subprocess
+import uuid
 
 from control.exceptions import InvalidControlfile
 from control.service import MetaService, Startable, ImageService, create_service
@@ -64,6 +65,7 @@ class Controlfile:
         variables = {
             "CONTROL_DIR": dn(dn(dn(os.path.abspath(__file__)))),
             "CONTROL_PATH": dn(dn(os.path.abspath(__file__))),
+            "CONTROL_SESSION_UUID": uuid.uuid4(),
             "UID": os.getuid(),
             "GID": os.getgid(),
         }

@@ -5,6 +5,7 @@ have to scroll past the Controlfile class
 """
 
 from enum import Enum
+from random import randint
 import logging
 
 module_logger = logging.getLogger('control.substitution')  # pylint: disable=invalid-name
@@ -179,10 +180,30 @@ def normalize_service(service, opers, variables):
 substitute_vars_decision_dict = {
     # dict, list, str
     (True, False, False): lambda d, vd: {k: _substitute_vars(v, vd) for k, v in d.items()},
-    (False, True, False): lambda d, vd: [x.format(**vd) for x in d],
-    (False, False, True): lambda d, vd: d.format(**vd),
+    (False, True, False): lambda d, vd: [x.format(**_merge_dicts(
+        vd,
+        {'RANDOM': str(randint(0, 10000))}
+    )) for x in d],
+    (False, False, True): lambda d, vd: d.format(**_merge_dicts(
+        vd,
+        {'RANDOM': str(randint(0, 10000))}
+    )),
     (False, False, False): lambda d, vd: d
 }
+
+
+def _merge_dicts(*args):
+    """
+    Before python 3.5 you can't do foo(**dict_one, **dict_two)
+    so, this function exists.
+    """
+    if len(args) < 1:
+        return {}
+
+    ret = args[0].copy()
+    for d in args[1:]:
+        ret.update(d)
+    return ret
 
 
 def _substitute_vars(d, var_dict):  # pylint: disable=invalid-name
