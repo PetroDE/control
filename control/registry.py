@@ -2,6 +2,7 @@
 
 import base64
 import json
+import logging
 import os
 import sys
 
@@ -9,6 +10,9 @@ import requests
 
 from control.shittylogging import log, err
 from control.options import options
+
+module_logger = logging.getLogger('control.registry')
+module_logger.setLevel(logging.DEBUG)
 
 
 class Registry:
@@ -145,7 +149,11 @@ class Registry:
                 image=repo.image,
                 tag=repo.tag))
         if response.status_code == 200:
-            return json.loads(response.json()['history'][0]['v1Compatibility'])['created']
+            try:
+                return json.loads(response.json()['history'][0]['v1Compatibility'])['created']
+            except KeyError as e:
+                module_logger.info('Cannot determine age of image %s', repo)
+                return ''
         return ''
 
     def get_tags_of_image(self, image):
