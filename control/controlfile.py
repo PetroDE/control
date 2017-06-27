@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import os.path
+import socket
 import subprocess
 import uuid
 
@@ -68,6 +69,7 @@ class Controlfile:
             "CONTROL_SESSION_UUID": uuid.uuid4(),
             "UID": os.getuid(),
             "GID": os.getgid(),
+            "HOSTNAME": socket.gethostname(),
         }
         git = {}
         with subprocess.Popen(['git', 'rev-parse', '--show-toplevel'],
