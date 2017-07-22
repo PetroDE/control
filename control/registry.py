@@ -8,7 +8,6 @@ import sys
 
 import requests
 
-from control.shittylogging import log, err
 from control.options import options
 
 module_logger = logging.getLogger('control.registry')
@@ -36,7 +35,7 @@ class Registry:
                   protocol to communicate over.
         port   -- a string argument that is the port to connect to (optional)
         """
-
+        self.log = logging.getLogger('control.registry.Registry')
         self.domain = domain
         self.port = port
         if port:
@@ -57,29 +56,29 @@ class Registry:
                             j['auths']['https://{}'.format(self.endpoint)]['auth'])
                         .decode('utf-8')
                         .split(':'))
-                    log('setting basicauth', level='debug')
+                    self.log.debug('setting basicauth')
                 except KeyError:
                     pass
                 except ValueError as e:
-                    log('Docker config file not valid JSON: {}'.format(e), level='warn')
+                    self.log.warning('Docker config file not valid JSON: %s', e)
         if options.no_verify:
             self.certfile = False
             self.use_cert = True
         elif os.path.isdir(certdir):
             # for certfile in map(lambda x: '{}/{}'.format(certdir, x), os.listdir(certdir)):
             for certfile in ('{}/{}'.format(certdir, x) for x in os.listdir(certdir)):
-                log('trying certfile {}'.format(certfile), level='debug')
+                self.log.debug('trying certfile %s', certfile)
                 try:
                     self.session.get(
                         'https://{}/'.format(self.endpoint),
                         verify=certfile)
                 except (requests.exceptions.SSLError, OSError) as e:
-                    log('Cert file rejected {}: {}'.format(certfile, e), level='debug')
+                    self.log.debug('Cert file rejected %s: %s', certfile, e)
                 except:
-                    log('Unexpected exception: {}'.format(sys.exc_info()[0]))
+                    self.log.info('Unexpected exception: %s', sys.exc_info()[0])
                     raise
                 else:
-                    log('Setting verify', level='debug')
+                    self.log.debug('Setting verify')
                     self.certfile = certfile
                     self.use_cert = True
                     break
@@ -95,13 +94,12 @@ class Registry:
                     sys.exit(3)
         except requests.exceptions.SSLError:
             if not options.no_verify:
-                # TODO: don't exit the script, throw an error
-                err('Cannot verify that you are connecting to the registry you think you are')
-                sys.exit(3)
+                self.log.warning('Cannot verify that you are connecting to the registry you think you are')
         except requests.exceptions.ConnectionError as e:
             # TODO: pass through error
-            err('registry {reg} could not be contacted: {msg}'.format(reg=self.endpoint,
-                msg=e))
+            self.log.critical('registry %s could not be contacted: %s',
+                              self.endpoint,
+                              e)
             sys.exit(3)
 
     def get(self, uri):
@@ -118,7 +116,7 @@ class Registry:
     def get_info_of_repo(self, repo):
         """Return the json object of the specific repo (image and tag)"""
 
-        # log(json.dumps(reg.get_info_of_repo(base), sort_keys=True, indent=4, separators=(',', ': ')))
+        # self.log.info(json.dumps(reg.get_info_of_repo(base), sort_keys=True, indent=4, separators=(',', ': ')))
         response = self.get(
             '{base}/{image}/manifests/{tag}'.format(
                 base=self.baseuri,
@@ -151,7 +149,7 @@ class Registry:
         if response.status_code == 200:
             try:
                 return json.loads(response.json()['history'][0]['v1Compatibility'])['created']
-            except KeyError as e:
+            except KeyError:
                 module_logger.info('Cannot determine age of image %s', repo)
                 return ''
         return ''
