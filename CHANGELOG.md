@@ -1,3 +1,7 @@
+## 2.4.3
+
+* [BUGFIX] Removed creaky old hand-made logging framework
+
 ## 2.4.1
 
 * [FEATURE] New variable for interpolation: RANDOM will be unique for most places in a Controlfile
